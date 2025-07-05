@@ -1,4 +1,4 @@
-# 🇿🇦 SA Tax Calculator
+# SA Tax Calculator
 
 A comprehensive, dynamic South African tax calculator built with Next.js and React. Features real-time SARS tax bracket calculations, provisional tax planning, and professional export capabilities for tax practitioners.
 
@@ -248,29 +248,17 @@ MIT License - see [LICENSE](LICENSE) file for details.
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open Pull Request
 
-## 📞 Support
-
-- 📧 Email: your-email@example.com
-- 🐛 Issues: [GitHub Issues](https://github.com/YOUR-USERNAME/sa-tax-calculator/issues)
-- 📖 Documentation: [Wiki](https://github.com/YOUR-USERNAME/sa-tax-calculator/wiki)
-
 ## 🎯 Roadmap
 
-- [ ] Multi-language support (Afrikaans, Zulu)
-- [ ] Advanced tax planning scenarios
-- [ ] Integration with accounting software
 - [ ] Mobile app (React Native)
-- [ ] Real-time tax law updates API
-- [ ] Company tax calculations
-- [ ] VAT calculator integration
+- [ ] Receipt scanning
+- [ ] Database for profile specific data storage
 
 ## 📊 Tax Compliance Notice
 
-This calculator provides estimates based on SARS tax brackets. Always consult with a qualified tax practitioner for official tax advice and filing. The developers are not responsible for any tax-related decisions made using this tool.
+This calculator provides estimates based on SARS tax brackets. Always consult with a qualified tax practitioner for official tax advice and filing.
 
 ---
-
-**Built with ❤️ for South African taxpayers**
 
 ### Technologies Used
 - [Next.js 14](https://nextjs.org/) - React framework
