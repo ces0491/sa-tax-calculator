@@ -201,6 +201,170 @@ const DynamicTaxApp = () => {
     },
   ]);
 
+  // PDF Export Function
+  const exportToPDF = async () => {
+    try {
+      // Dynamically import jsPDF to avoid SSR issues
+      const { jsPDF } = await import('jspdf');
+      
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
+      let yPosition = 20;
+      
+      // Helper function to add text with line breaks
+      const addText = (text, fontSize = 12, isBold = false, color = [0, 0, 0]) => {
+        doc.setFontSize(fontSize);
+        doc.setTextColor(color[0], color[1], color[2]);
+        if (isBold) doc.setFont("helvetica", "bold");
+        else doc.setFont("helvetica", "normal");
+        
+        const lines = doc.splitTextToSize(text, pageWidth - 40);
+        lines.forEach(line => {
+          if (yPosition > pageHeight - 20) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.text(line, 20, yPosition);
+          yPosition += fontSize * 0.5;
+        });
+        yPosition += 5;
+      };
+
+      // Add horizontal line
+      const addLine = () => {
+        doc.setDrawColor(150, 150, 150);
+        doc.line(20, yPosition, pageWidth - 20, yPosition);
+        yPosition += 10;
+      };
+
+      // Header
+      addText("SOUTH AFRICAN TAX CALCULATION REPORT", 18, true, [0, 51, 153]);
+      addText(`${selectedTaxYear} Tax Year Assessment`, 14, true);
+      addText(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 10);
+      addText(`Taxpayer Age Category: ${userAge.replace('under', 'Under ').replace('over', 'Over ')}`, 10);
+      addLine();
+
+      // Executive Summary
+      addText("EXECUTIVE SUMMARY", 14, true, [0, 102, 0]);
+      
+      const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
+        sum + calculateAnnualAmount(entry.amount, entry.period), 0
+      );
+      
+      const totalBusinessExpenses = businessExpenses.reduce((sum, expense) => 
+        sum + calculateAnnualAmount(expense.amount, expense.period), 0
+      );
+      
+      const taxableIncome = Math.max(0, totalAnnualIncome - totalBusinessExpenses);
+      const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
+      const monthlyTaxRequired = taxCalculation.tax / 12;
+
+      addText(`Total Annual Income: ${formatCurrency(totalAnnualIncome)}`, 12, true);
+      addText(`Total Business Expenses: ${formatCurrency(totalBusinessExpenses)}`, 12, true);
+      addText(`Taxable Income: ${formatCurrency(taxableIncome)}`, 12, true);
+      addText(`Annual Tax Liability: ${formatCurrency(taxCalculation.tax)}`, 12, true, [153, 0, 0]);
+      addText(`Monthly Provisional Tax: ${formatCurrency(monthlyTaxRequired)}`, 12, true, [153, 0, 0]);
+      addText(`Effective Tax Rate: ${taxCalculation.effectiveRate.toFixed(2)}%`, 12, true);
+      addLine();
+
+      // Income Details
+      addText("INCOME BREAKDOWN", 14, true, [0, 102, 0]);
+      incomeEntries.forEach((entry, index) => {
+        const annualAmount = calculateAnnualAmount(entry.amount, entry.period);
+        addText(`${index + 1}. ${entry.description}`, 11, true);
+        addText(`   Amount: ${formatCurrency(annualAmount)} (${entry.period})`, 10);
+        addText(`   Source: ${entry.source} | Data: ${entry.dataSource}`, 10);
+        if (entry.notes) addText(`   Notes: ${entry.notes}`, 10);
+        yPosition += 3;
+      });
+      addLine();
+
+      // Business Expenses Details
+      addText("BUSINESS EXPENSES BREAKDOWN", 14, true, [0, 102, 0]);
+      businessExpenses.forEach((expense, index) => {
+        const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
+        addText(`${index + 1}. ${expense.description}`, 11, true);
+        addText(`   Amount: ${formatCurrency(annualAmount)} (${expense.period})`, 10);
+        addText(`   Category: ${expense.category} | Data: ${expense.dataSource}`, 10);
+        if (expense.notes) addText(`   Notes: ${expense.notes}`, 10);
+        yPosition += 3;
+      });
+      addLine();
+
+      // Tax Calculation Details
+      addText("TAX CALCULATION DETAILS", 14, true, [0, 102, 0]);
+      addText(`Tax Year: ${selectedTaxYear} (SARS Brackets)`, 12);
+      addText(`Age Category: ${userAge}`, 12);
+      addText(`Gross Tax (before rebates): ${formatCurrency(taxCalculation.grossTax)}`, 12);
+      addText(`Tax Rebates Applied: ${formatCurrency(taxCalculation.rebates)}`, 12);
+      addText(`Net Tax Liability: ${formatCurrency(taxCalculation.tax)}`, 12, true);
+      addText(`Marginal Tax Rate: ${taxCalculation.marginalRate.toFixed(1)}%`, 12);
+      addLine();
+
+      // Personal Expenses (for reference)
+      if (personalExpenses.length > 0) {
+        addText("PERSONAL EXPENSES (NON-DEDUCTIBLE)", 14, true, [153, 76, 0]);
+        personalExpenses.forEach((expense, index) => {
+          const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
+          addText(`${index + 1}. ${expense.description}: ${formatCurrency(annualAmount)}`, 11);
+          if (expense.notes) addText(`   Notes: ${expense.notes}`, 10);
+        });
+        addLine();
+      }
+
+      // Provisional Tax Schedule
+      addText("PROVISIONAL TAX PAYMENT SCHEDULE", 14, true, [153, 0, 0]);
+      const quarterlyTax = taxCalculation.tax / 4;
+      addText(`1st Payment (31 August): ${formatCurrency(quarterlyTax)}`, 12);
+      addText(`2nd Payment (28 February): ${formatCurrency(quarterlyTax)}`, 12);
+      addText(`Annual Payment Total: ${formatCurrency(taxCalculation.tax)}`, 12, true);
+      addLine();
+
+      // Data Quality Summary
+      addText("DATA QUALITY SUMMARY", 14, true, [0, 102, 0]);
+      const autoDetected = incomeEntries.filter(e => e.dataSource === 'auto-detected').length + 
+                          businessExpenses.filter(e => e.dataSource === 'auto-detected').length;
+      const manual = incomeEntries.filter(e => e.dataSource === 'manual').length + 
+                     businessExpenses.filter(e => e.dataSource === 'manual').length;
+      const modified = incomeEntries.filter(e => e.dataSource === 'modified').length + 
+                       businessExpenses.filter(e => e.dataSource === 'modified').length;
+
+      addText(`Auto-detected entries: ${autoDetected}`, 11);
+      addText(`Manual entries: ${manual}`, 11);
+      addText(`Modified entries: ${modified}`, 11);
+      addText(`Personal expenses tracked: ${personalExpenses.length}`, 11);
+      addLine();
+
+      // Important Notes
+      addText("IMPORTANT NOTES", 14, true, [153, 0, 0]);
+      addText("1. This calculation is based on SARS tax brackets for the selected tax year.", 10);
+      addText("2. All amounts are in South African Rand (ZAR).", 10);
+      addText("3. This is an estimate - consult with a qualified tax practitioner for official filing.", 10);
+      addText("4. Keep all supporting documentation for business expense claims.", 10);
+      addText("5. Provisional tax payments should be made by the due dates to avoid penalties.", 10);
+      addText("6. Auto-detected entries were derived from financial statement analysis.", 10);
+
+      // Footer
+      yPosition = pageHeight - 30;
+      doc.setFontSize(8);
+      doc.setTextColor(100, 100, 100);
+      doc.text("Generated by SA Tax Calculator - Professional Tax Planning Tool", 20, yPosition);
+      doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth - 40, yPosition);
+
+      // Save the PDF
+      const fileName = `SA-Tax-Report-${selectedTaxYear}-${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
+
+      // Show success message
+      alert(`PDF report generated successfully!\nFile: ${fileName}`);
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
+  };
+
   // Import function
   const importFromCSV = (event) => {
     const file = event.target.files[0];
@@ -745,6 +909,13 @@ Version: Professional Tax Analysis Tool
                 Export CSV
               </button>
               <button
+                onClick={exportToPDF}
+                className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+              >
+                <FileText className="mr-2" size={16} />
+                Export PDF
+              </button>
+              <button
                 onClick={exportTaxSummary}
                 className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"
               >
@@ -917,6 +1088,12 @@ Version: Professional Tax Analysis Tool
                   className="hidden"
                 />
               </label>
+              <button
+                onClick={exportToPDF}
+                className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
+              >
+                Generate PDF Report
+              </button>
               <button
                 onClick={exportTaxSummary}
                 className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
