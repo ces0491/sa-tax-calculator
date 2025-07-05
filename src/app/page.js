@@ -1,4 +1,4 @@
-import DynamicTaxApp from '@/components/TaxCalculator'
+import DynamicTaxApp from '../components/TaxCalculator'
 
 export default function Home() {
   return (
