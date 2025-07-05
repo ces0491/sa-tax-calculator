@@ -1,0 +1,45 @@
+{
+  "name": "sa-tax-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "South African Provisional Tax Calculator Tool",
+  "author": "Your Name",
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "export": "next export"
+  },
+  "dependencies": {
+    "next": "^14.0.0",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
+    "lucide-react": "^0.263.1",
+    "clsx": "^2.0.0"
+  },
+  "devDependencies": {
+    "autoprefixer": "^10.0.0",
+    "eslint": "^8.0.0",
+    "eslint-config-next": "^14.0.0",
+    "postcss": "^8.0.0",
+    "tailwindcss": "^3.0.0"
+  },
+  "keywords": [
+    "tax-calculator",
+    "south-africa",
+    "sars",
+    "income-tax",
+    "provisional-tax",
+    "nextjs",
+    "react"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ces0491/sa-tax-calculator.git"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
