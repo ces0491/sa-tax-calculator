@@ -1,3 +1,5 @@
+"use client";
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Download, Edit2, Save, Plus, Trash2, Calculator, FileText, DollarSign, TrendingUp, AlertCircle, CheckCircle, Settings, Upload, FileUp, RefreshCw, Eye, EyeOff, Trash, ArrowRight, ArrowLeft, ExternalLink, X } from 'lucide-react';
 
