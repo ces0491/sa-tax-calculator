@@ -20,17 +20,20 @@ A comprehensive, dynamic South African tax calculator built with Next.js and Rea
 ## 🚀 Quick Deploy to Vercel
 
 ### Option 1: Deploy Button (Fastest)
+
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/YOUR-USERNAME/sa-tax-calculator)
 
 ### Option 2: Manual Deployment
 
 #### Prerequisites
+
 - Node.js 18.0.0 or later
 - Git
 - GitHub account
 - Vercel account (free)
 
 #### Step 1: Clone and Setup
+
 ```bash
 # Clone the repository
 git clone https://github.com/YOUR-USERNAME/sa-tax-calculator.git
@@ -44,6 +47,7 @@ npm run dev
 ```
 
 #### Step 2: Create GitHub Repository
+
 ```bash
 # Initialize git (if not already done)
 git init
@@ -57,6 +61,7 @@ git push -u origin main
 ```
 
 #### Step 3: Deploy to Vercel
+
 1. **Sign up/Login to Vercel** at [vercel.com](https://vercel.com)
 2. **Import Project**:
    - Click "New Project"
@@ -74,6 +79,7 @@ Your app will be live at: `https://sa-tax-calculator-YOUR-USERNAME.vercel.app`
 ## 🛠️ Local Development
 
 ### Setup
+
 ```bash
 # Install dependencies
 npm install
@@ -86,6 +92,7 @@ open http://localhost:3000
 ```
 
 ### Available Scripts
+
 ```bash
 npm run dev          # Start development server
 npm run build        # Build for production
@@ -95,7 +102,9 @@ npm run export       # Export static files
 ```
 
 ### Environment Variables (Optional)
+
 Create `.env.local`:
+
 ```env
 NEXT_PUBLIC_APP_NAME="SA Tax Calculator"
 NEXT_PUBLIC_VERSION="1.0.0"
@@ -104,28 +113,33 @@ NEXT_PUBLIC_VERSION="1.0.0"
 ## 📊 Usage Guide
 
 ### 1. **Tax Year Selection**
+
 - App auto-detects current SA tax year (March-February cycle)
 - Select different tax years from dropdown
 - Tax brackets update automatically
 
 ### 2. **Income Management**
+
 - **Auto-detected**: Entries from bank statement analysis
 - **Manual**: Click "Add Income" to add custom entries
 - **Edit**: Enable edit mode to modify any entry
 - **Categories**: Employment, Freelance, Investment, etc.
 
 ### 3. **Expense Management**
+
 - **Business Expenses**: Tax-deductible expenses
 - **Personal Expenses**: Non-deductible (for review)
 - **Move Between**: Transfer expenses between categories
 - **Home Office**: Automatic proportional calculations
 
 ### 4. **Data Import/Export**
+
 - **Import CSV**: Bulk import from spreadsheets
 - **Export CSV**: Detailed data export
 - **Tax Summary**: Professional report for practitioners
 
 ### 5. **Tax Calculations**
+
 - Real-time provisional tax calculations
 - Effective vs marginal tax rates
 - Monthly tax requirements
@@ -134,6 +148,7 @@ NEXT_PUBLIC_VERSION="1.0.0"
 ## 🎨 Customization
 
 ### Themes
+
 The app uses Tailwind CSS with CSS variables for theming. Customize colors in `src/app/globals.css`:
 
 ```css
@@ -145,9 +160,11 @@ The app uses Tailwind CSS with CSS variables for theming. Customize colors in `s
 ```
 
 ### Tax Brackets
+
 Update tax brackets in `src/data/taxBrackets.js` or the component directly. The app supports multiple tax years with historical data.
 
 ### Branding
+
 - Replace logo in `public/logo.png`
 - Update app name in `src/app/layout.js`
 - Modify colors in `tailwind.config.js`
@@ -155,7 +172,9 @@ Update tax brackets in `src/data/taxBrackets.js` or the component directly. The 
 ## 🔧 Configuration
 
 ### Vercel Configuration
+
 The app includes `vercel.json` for optimal deployment:
+
 ```json
 {
   "framework": "nextjs",
@@ -166,17 +185,21 @@ The app includes `vercel.json` for optimal deployment:
 ```
 
 ### Custom Domain (Optional)
+
 1. Go to Vercel Dashboard → Your Project → Settings → Domains
 2. Add your custom domain
 3. Configure DNS records as instructed
 
 ### Analytics (Optional)
+
 Add Vercel Analytics:
+
 ```bash
 npm install @vercel/analytics
 ```
 
 Then in `src/app/layout.js`:
+
 ```javascript
 import { Analytics } from '@vercel/analytics/react'
 
@@ -212,6 +235,7 @@ The app includes basic PWA support with `manifest.json`. To enhance:
 ### Common Issues
 
 **Build Errors:**
+
 ```bash
 # Clear cache and reinstall
 rm -rf .next node_modules package-lock.json
@@ -220,12 +244,14 @@ npm run build
 ```
 
 **Styling Issues:**
+
 ```bash
 # Rebuild Tailwind
 npx tailwindcss build -i ./src/app/globals.css -o ./dist/output.css
 ```
 
 **Deployment Fails:**
+
 - Check Node.js version (18.0.0+)
 - Verify all dependencies in `package.json`
 - Check build logs in Vercel dashboard
@@ -261,6 +287,7 @@ This calculator provides estimates based on SARS tax brackets. Always consult wi
 ---
 
 ### Technologies Used
+
 - [Next.js 14](https://nextjs.org/) - React framework
 - [React 18](https://reactjs.org/) - UI library
 - [Tailwind CSS](https://tailwindcss.com/) - Styling
@@ -268,4 +295,5 @@ This calculator provides estimates based on SARS tax brackets. Always consult wi
 - [Vercel](https://vercel.com/) - Deployment platform
 
 ### Last Updated
+
 Tax brackets and rebates current as of SARS 2026 tax year announcement.
