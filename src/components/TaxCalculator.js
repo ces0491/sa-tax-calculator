@@ -1,24 +1,21 @@
-'use client';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Download, Edit2, Save, Plus, Trash2, Calculator, FileText, DollarSign, TrendingUp, AlertCircle, CheckCircle, Settings, Upload, FileUp, RefreshCw, Eye, EyeOff, Trash, ArrowRight, ArrowLeft, ExternalLink, X } from 'lucide-react';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Download, Edit2, Save, Plus, Trash2, Calendar, Calculator, FileText, DollarSign, TrendingUp, AlertCircle, CheckCircle, Home, Settings, Upload } from 'lucide-react';
+// PDF.js imports - In production, install with: npm install pdfjs-dist
+// For now, we'll load from CDN
+const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+const PDFJS_WORKER_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-const DynamicTaxApp = () => {
+const ProductionTaxCalculator = () => {
   // Auto-detect current tax year
   const getCurrentTaxYear = () => {
     const now = new Date();
-    const currentMonth = now.getMonth() + 1; // JavaScript months are 0-indexed
+    const currentMonth = now.getMonth() + 1;
     const currentYear = now.getFullYear();
-    
-    // SA tax year runs from 1 March to 28 February
-    if (currentMonth >= 3) {
-      return currentYear + 1; // If March or later, we're in the next tax year
-    } else {
-      return currentYear; // If Jan/Feb, we're still in the current tax year
-    }
+    return currentMonth >= 3 ? currentYear + 1 : currentYear;
   };
 
-  // SARS Tax Brackets Data (updated with current rates)
+  // SARS Tax Brackets Data
   const taxBracketsData = {
     2026: {
       brackets: [
@@ -45,32 +42,6 @@ const DynamicTaxApp = () => {
       ],
       rebates: { primary: 17235, secondary: 9444, tertiary: 3145 },
       thresholds: { under65: 95750, under75: 148217, over75: 165689 }
-    },
-    2024: {
-      brackets: [
-        { min: 0, max: 237100, rate: 0.18, cumulative: 0 },
-        { min: 237101, max: 370500, rate: 0.26, cumulative: 42678 },
-        { min: 370501, max: 512800, rate: 0.31, cumulative: 77362 },
-        { min: 512801, max: 673000, rate: 0.36, cumulative: 121475 },
-        { min: 673001, max: 857900, rate: 0.39, cumulative: 179147 },
-        { min: 857901, max: 1817000, rate: 0.41, cumulative: 251258 },
-        { min: 1817001, max: Infinity, rate: 0.45, cumulative: 644489 }
-      ],
-      rebates: { primary: 17235, secondary: 9444, tertiary: 3145 },
-      thresholds: { under65: 95750, under75: 148217, over75: 165689 }
-    },
-    2023: {
-      brackets: [
-        { min: 0, max: 226000, rate: 0.18, cumulative: 0 },
-        { min: 226001, max: 353100, rate: 0.26, cumulative: 40680 },
-        { min: 353101, max: 488700, rate: 0.31, cumulative: 73726 },
-        { min: 488701, max: 641400, rate: 0.36, cumulative: 115762 },
-        { min: 641401, max: 817600, rate: 0.39, cumulative: 170734 },
-        { min: 817601, max: 1731600, rate: 0.41, cumulative: 239452 },
-        { min: 1731601, max: Infinity, rate: 0.45, cumulative: 614192 }
-      ],
-      rebates: { primary: 16425, secondary: 9000, tertiary: 2997 },
-      thresholds: { under65: 91250, under75: 141250, over75: 157900 }
     }
   };
 
@@ -79,433 +50,583 @@ const DynamicTaxApp = () => {
   const [userAge, setUserAge] = useState('under65');
   const [editMode, setEditMode] = useState(false);
   const [homeOfficePercentage, setHomeOfficePercentage] = useState(8.2);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
+  const [showTransactionDetails, setShowTransactionDetails] = useState(false);
+  const [pdfJsLoaded, setPdfJsLoaded] = useState(false);
 
-  // Predefined categories
+  // Data states
+  const [incomeEntries, setIncomeEntries] = useState([]);
+  const [businessExpenses, setBusinessExpenses] = useState([]);
+  const [personalExpenses, setPersonalExpenses] = useState([]);
+  const [homeExpenses, setHomeExpenses] = useState([]);
+  const [rawTransactions, setRawTransactions] = useState([]);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [uncategorizedTransactions, setUncategorizedTransactions] = useState([]);
+
+  // Edit states
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [showAddModal, setShowAddModal] = useState({ show: false, type: '' });
+
+  // Categories
   const incomeCategories = ["Employment", "Freelance", "Investment", "Rental", "Business", "Other"];
   const expenseCategories = ["Office", "Medical", "Retirement", "Professional", "Education", "Travel", "Equipment", "Software", "Insurance", "Utilities", "Marketing", "Training", "Other"];
 
-  // State for editing
-  const [editingEntry, setEditingEntry] = useState(null);
-  const [showAddIncomeModal, setShowAddIncomeModal] = useState(false);
-  const [showAddExpenseModal, setShowAddExpenseModal] = useState(false);
-  const [showImportModal, setShowImportModal] = useState(false);
+  // PDF.js reference
+  const pdfjsLib = useRef(null);
 
-  // Income state
-  const [incomeEntries, setIncomeEntries] = useState([
-    { 
-      id: 1, 
-      description: "Salary from NZ Company", 
-      amount: 547716.48, 
-      period: "6months", 
-      source: "Employment",
-      dataSource: "auto-detected",
-      notes: "From PRECISE DIGITAL NZ payments"
-    },
-  ]);
-
-  // Business expenses state
-  const [businessExpenses, setBusinessExpenses] = useState([
-    { 
-      id: 1, 
-      description: "Retirement Annuity (10X)", 
-      amount: 34650.00, 
-      period: "6months", 
-      category: "Retirement",
-      dataSource: "auto-detected",
-      notes: "10XRA COL transactions"
-    },
-    { 
-      id: 2, 
-      description: "Medical Aid", 
-      amount: 24354.00, 
-      period: "6months", 
-      category: "Medical",
-      dataSource: "auto-detected",
-      notes: "DISC PREM medical aid contributions"
-    },
-    { 
-      id: 3, 
-      description: "Home Office Expenses", 
-      amount: 26640.93, 
-      period: "6months", 
-      category: "Office",
-      dataSource: "calculated",
-      notes: `${homeOfficePercentage}% of home expenses`
-    },
-    { 
-      id: 4, 
-      description: "Business Coffee", 
-      amount: 1078.00, 
-      period: "6months", 
-      category: "Business",
-      dataSource: "auto-detected",
-      notes: "Bootlegger and Shift coffee purchases"
-    },
-    { 
-      id: 5, 
-      description: "Printing Services", 
-      amount: 819.50, 
-      period: "6months", 
-      category: "Business",
-      dataSource: "auto-detected",
-      notes: "Rozprint transactions"
-    },
-    { 
-      id: 6, 
-      description: "Tax Advisory Services", 
-      amount: 700.00, 
-      period: "6months", 
-      category: "Professional",
-      dataSource: "auto-detected",
-      notes: "Personal Tax Service"
-    },
-    { 
-      id: 7, 
-      description: "Medical Expenses", 
-      amount: 14830.00, 
-      period: "6months", 
-      category: "Medical",
-      dataSource: "auto-detected",
-      notes: "Dr Malcol medical fees"
-    },
-    { 
-      id: 8, 
-      description: "Education Expenses (UCT)", 
-      amount: 32500.00, 
-      period: "6months", 
-      category: "Education",
-      dataSource: "auto-detected",
-      notes: "PAYU * UC University payments"
-    },
-  ]);
-
-  // Personal expenses state (for reference)
-  const [personalExpenses, setPersonalExpenses] = useState([
-    { 
-      id: 1, 
-      description: "Gym Membership (Virgin)", 
-      amount: 1037.50, 
-      period: "6months", 
-      category: "Personal",
-      dataSource: "auto-detected",
-      notes: "Virgin Active membership fees"
-    },
-    { 
-      id: 2, 
-      description: "Entertainment Subscriptions", 
-      amount: 1500.00, 
-      period: "6months", 
-      category: "Personal",
-      dataSource: "auto-detected",
-      notes: "Netflix, Apple, YouTube Premium"
-    },
-  ]);
-
-  // PDF Export Function
-  const exportToPDF = async () => {
-    try {
-      // Dynamically import jsPDF to avoid SSR issues
-      const { jsPDF } = await import('jspdf');
-      
-      const doc = new jsPDF();
-      const pageWidth = doc.internal.pageSize.width;
-      const pageHeight = doc.internal.pageSize.height;
-      let yPosition = 20;
-      
-      // Helper function to add text with line breaks
-      const addText = (text, fontSize = 12, isBold = false, color = [0, 0, 0]) => {
-        doc.setFontSize(fontSize);
-        doc.setTextColor(color[0], color[1], color[2]);
-        if (isBold) doc.setFont("helvetica", "bold");
-        else doc.setFont("helvetica", "normal");
-        
-        const lines = doc.splitTextToSize(text, pageWidth - 40);
-        lines.forEach(line => {
-          if (yPosition > pageHeight - 20) {
-            doc.addPage();
-            yPosition = 20;
-          }
-          doc.text(line, 20, yPosition);
-          yPosition += fontSize * 0.5;
-        });
-        yPosition += 5;
-      };
-
-      // Add horizontal line
-      const addLine = () => {
-        doc.setDrawColor(150, 150, 150);
-        doc.line(20, yPosition, pageWidth - 20, yPosition);
-        yPosition += 10;
-      };
-
-      // Header
-      addText("SOUTH AFRICAN TAX CALCULATION REPORT", 18, true, [0, 51, 153]);
-      addText(`${selectedTaxYear} Tax Year Assessment`, 14, true);
-      addText(`Generated: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}`, 10);
-      addText(`Taxpayer Age Category: ${userAge.replace('under', 'Under ').replace('over', 'Over ')}`, 10);
-      addLine();
-
-      // Executive Summary
-      addText("EXECUTIVE SUMMARY", 14, true, [0, 102, 0]);
-      
-      const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
-        sum + calculateAnnualAmount(entry.amount, entry.period), 0
-      );
-      
-      const totalBusinessExpenses = businessExpenses.reduce((sum, expense) => 
-        sum + calculateAnnualAmount(expense.amount, expense.period), 0
-      );
-      
-      const taxableIncome = Math.max(0, totalAnnualIncome - totalBusinessExpenses);
-      const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
-      const monthlyTaxRequired = taxCalculation.tax / 12;
-
-      addText(`Total Annual Income: ${formatCurrency(totalAnnualIncome)}`, 12, true);
-      addText(`Total Business Expenses: ${formatCurrency(totalBusinessExpenses)}`, 12, true);
-      addText(`Taxable Income: ${formatCurrency(taxableIncome)}`, 12, true);
-      addText(`Annual Tax Liability: ${formatCurrency(taxCalculation.tax)}`, 12, true, [153, 0, 0]);
-      addText(`Monthly Provisional Tax: ${formatCurrency(monthlyTaxRequired)}`, 12, true, [153, 0, 0]);
-      addText(`Effective Tax Rate: ${taxCalculation.effectiveRate.toFixed(2)}%`, 12, true);
-      addLine();
-
-      // Income Details
-      addText("INCOME BREAKDOWN", 14, true, [0, 102, 0]);
-      incomeEntries.forEach((entry, index) => {
-        const annualAmount = calculateAnnualAmount(entry.amount, entry.period);
-        addText(`${index + 1}. ${entry.description}`, 11, true);
-        addText(`   Amount: ${formatCurrency(annualAmount)} (${entry.period})`, 10);
-        addText(`   Source: ${entry.source} | Data: ${entry.dataSource}`, 10);
-        if (entry.notes) addText(`   Notes: ${entry.notes}`, 10);
-        yPosition += 3;
-      });
-      addLine();
-
-      // Business Expenses Details
-      addText("BUSINESS EXPENSES BREAKDOWN", 14, true, [0, 102, 0]);
-      businessExpenses.forEach((expense, index) => {
-        const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
-        addText(`${index + 1}. ${expense.description}`, 11, true);
-        addText(`   Amount: ${formatCurrency(annualAmount)} (${expense.period})`, 10);
-        addText(`   Category: ${expense.category} | Data: ${expense.dataSource}`, 10);
-        if (expense.notes) addText(`   Notes: ${expense.notes}`, 10);
-        yPosition += 3;
-      });
-      addLine();
-
-      // Tax Calculation Details
-      addText("TAX CALCULATION DETAILS", 14, true, [0, 102, 0]);
-      addText(`Tax Year: ${selectedTaxYear} (SARS Brackets)`, 12);
-      addText(`Age Category: ${userAge}`, 12);
-      addText(`Gross Tax (before rebates): ${formatCurrency(taxCalculation.grossTax)}`, 12);
-      addText(`Tax Rebates Applied: ${formatCurrency(taxCalculation.rebates)}`, 12);
-      addText(`Net Tax Liability: ${formatCurrency(taxCalculation.tax)}`, 12, true);
-      addText(`Marginal Tax Rate: ${taxCalculation.marginalRate.toFixed(1)}%`, 12);
-      addLine();
-
-      // Personal Expenses (for reference)
-      if (personalExpenses.length > 0) {
-        addText("PERSONAL EXPENSES (NON-DEDUCTIBLE)", 14, true, [153, 76, 0]);
-        personalExpenses.forEach((expense, index) => {
-          const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
-          addText(`${index + 1}. ${expense.description}: ${formatCurrency(annualAmount)}`, 11);
-          if (expense.notes) addText(`   Notes: ${expense.notes}`, 10);
-        });
-        addLine();
-      }
-
-      // Provisional Tax Schedule
-      addText("PROVISIONAL TAX PAYMENT SCHEDULE", 14, true, [153, 0, 0]);
-      const quarterlyTax = taxCalculation.tax / 4;
-      addText(`1st Payment (31 August): ${formatCurrency(quarterlyTax)}`, 12);
-      addText(`2nd Payment (28 February): ${formatCurrency(quarterlyTax)}`, 12);
-      addText(`Annual Payment Total: ${formatCurrency(taxCalculation.tax)}`, 12, true);
-      addLine();
-
-      // Data Quality Summary
-      addText("DATA QUALITY SUMMARY", 14, true, [0, 102, 0]);
-      const autoDetected = incomeEntries.filter(e => e.dataSource === 'auto-detected').length + 
-                          businessExpenses.filter(e => e.dataSource === 'auto-detected').length;
-      const manual = incomeEntries.filter(e => e.dataSource === 'manual').length + 
-                     businessExpenses.filter(e => e.dataSource === 'manual').length;
-      const modified = incomeEntries.filter(e => e.dataSource === 'modified').length + 
-                       businessExpenses.filter(e => e.dataSource === 'modified').length;
-
-      addText(`Auto-detected entries: ${autoDetected}`, 11);
-      addText(`Manual entries: ${manual}`, 11);
-      addText(`Modified entries: ${modified}`, 11);
-      addText(`Personal expenses tracked: ${personalExpenses.length}`, 11);
-      addLine();
-
-      // Important Notes
-      addText("IMPORTANT NOTES", 14, true, [153, 0, 0]);
-      addText("1. This calculation is based on SARS tax brackets for the selected tax year.", 10);
-      addText("2. All amounts are in South African Rand (ZAR).", 10);
-      addText("3. This is an estimate - consult with a qualified tax practitioner for official filing.", 10);
-      addText("4. Keep all supporting documentation for business expense claims.", 10);
-      addText("5. Provisional tax payments should be made by the due dates to avoid penalties.", 10);
-      addText("6. Auto-detected entries were derived from financial statement analysis.", 10);
-
-      // Footer
-      yPosition = pageHeight - 30;
-      doc.setFontSize(8);
-      doc.setTextColor(100, 100, 100);
-      doc.text("Generated by SA Tax Calculator - Professional Tax Planning Tool", 20, yPosition);
-      doc.text(`Page ${doc.internal.getNumberOfPages()}`, pageWidth - 40, yPosition);
-
-      // Save the PDF
-      const fileName = `SA-Tax-Report-${selectedTaxYear}-${new Date().toISOString().split('T')[0]}.pdf`;
-      doc.save(fileName);
-
-      // Show success message
-      alert(`PDF report generated successfully!\nFile: ${fileName}`);
-
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
-    }
-  };
-
-  // Import function
-  const importFromCSV = (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (e) => {
+  // Load PDF.js library
+  useEffect(() => {
+    const loadPdfJs = async () => {
       try {
-        const text = e.target.result;
-        const lines = text.split('\n').slice(1); // Skip header
-        let importedIncome = 0;
-        let importedExpenses = 0;
+        // Check if PDF.js is already loaded
+        if (window.pdfjsLib) {
+          pdfjsLib.current = window.pdfjsLib;
+          pdfjsLib.current.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
+          setPdfJsLoaded(true);
+          return;
+        }
 
-        lines.forEach((line, index) => {
-          if (!line.trim()) return;
-          
-          const [type, description, amount, period, , category, dataSource, notes] = line.split(',');
-          
-          if (!type || !description || !amount) {
-            console.warn(`Skipping line ${index + 2}: Missing required fields`);
-            return;
-          }
-
-          const entry = {
-            id: Date.now() + index,
-            description: description.trim(),
-            amount: parseFloat(amount) || 0,
-            period: period || 'annual',
-            dataSource: dataSource || 'imported',
-            notes: notes || ''
-          };
-
-          if (type.toLowerCase().includes('income')) {
-            setIncomeEntries(prev => [...prev, {
-              ...entry,
-              source: category || 'Other'
-            }]);
-            importedIncome++;
-          } else if (type.toLowerCase().includes('business') || type.toLowerCase().includes('expense')) {
-            setBusinessExpenses(prev => [...prev, {
-              ...entry,
-              category: category || 'Other'
-            }]);
-            importedExpenses++;
-          }
-        });
-
-        alert(`Import completed!\nIncome entries: ${importedIncome}\nExpense entries: ${importedExpenses}`);
+        // Load PDF.js from CDN
+        const script = document.createElement('script');
+        script.src = PDFJS_CDN;
+        script.onload = () => {
+          pdfjsLib.current = window.pdfjsLib;
+          pdfjsLib.current.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
+          setPdfJsLoaded(true);
+          console.log('PDF.js loaded successfully');
+        };
+        script.onerror = () => {
+          console.error('Failed to load PDF.js');
+          setProcessingStatus('Failed to load PDF processing library');
+        };
+        document.head.appendChild(script);
       } catch (error) {
-        alert('Error importing CSV: ' + error.message);
+        console.error('Error loading PDF.js:', error);
+        setProcessingStatus('Error loading PDF processing library');
       }
     };
-    reader.readAsText(file);
-    event.target.value = ''; // Reset input
-  };
 
-  // Calculate annual amounts from period entries
-  const calculateAnnualAmount = (amount, period) => {
-    switch (period) {
-      case '6months': return amount * 2;
-      case '3months': return amount * 4;
-      case 'monthly': return amount * 12;
-      case 'weekly': return amount * 52;
-      case 'annual': return amount;
-      default: return amount;
-    }
-  };
-
-  // Tax calculation function
-  const calculateTax = useCallback((taxableIncome, taxYear, age) => {
-    if (taxableIncome <= 0) return { tax: 0, effectiveRate: 0, marginalRate: 0 };
-    
-    const yearData = taxBracketsData[taxYear];
-    if (!yearData) return { tax: 0, effectiveRate: 0, marginalRate: 0 };
-
-    const { brackets, rebates, thresholds } = yearData;
-    
-    // Check if income is below threshold
-    const threshold = age === 'under65' ? thresholds.under65 : 
-                     age === 'under75' ? thresholds.under75 : thresholds.over75;
-    
-    if (taxableIncome <= threshold) {
-      return { tax: 0, effectiveRate: 0, marginalRate: 0 };
-    }
-
-    let tax = 0;
-    let marginalRate = 0;
-    
-    // Calculate tax using brackets
-    for (const bracket of brackets) {
-      if (taxableIncome > bracket.max) {
-        continue;
-      } else {
-        const incomeInBracket = taxableIncome - (bracket.min - 1);
-        tax = bracket.cumulative + (incomeInBracket * bracket.rate);
-        marginalRate = bracket.rate;
-        break;
-      }
-    }
-    
-    // Apply rebates
-    let totalRebates = rebates.primary;
-    if (age === 'under75') totalRebates += rebates.secondary;
-    if (age === 'over75') totalRebates += rebates.secondary + rebates.tertiary;
-    
-    const finalTax = Math.max(0, tax - totalRebates);
-    const effectiveRate = taxableIncome > 0 ? (finalTax / taxableIncome) * 100 : 0;
-    
-    return { 
-      tax: finalTax, 
-      effectiveRate, 
-      marginalRate: marginalRate * 100,
-      grossTax: tax,
-      rebates: totalRebates
-    };
+    loadPdfJs();
   }, []);
 
-  // Calculate totals
-  const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
-    sum + calculateAnnualAmount(entry.amount, entry.period), 0
-  );
-  
-  const totalBusinessExpenses = businessExpenses.reduce((sum, expense) => 
-    sum + calculateAnnualAmount(expense.amount, expense.period), 0
-  );
-  
-  const taxableIncome = Math.max(0, totalAnnualIncome - totalBusinessExpenses);
-  
-  const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
-  const monthlyTaxRequired = taxCalculation.tax / 12;
-  const monthlyIncomeAfterTax = (totalAnnualIncome - taxCalculation.tax) / 12;
+  // Updated categorization rules based on your specific requirements
+  const categorizationRules = {
+    income: [
+      { pattern: /PRECISE DIGIT.*teletransmission inward/i, category: "Employment", source: "NZ Company Salary", confidence: 0.95 },
+      { pattern: /CASHFOCUS SALARY/i, category: "Employment", source: "Cashfocus Salary", confidence: 0.9 },
+      { pattern: /teletransmission inward/i, category: "Employment", source: "International Transfer", confidence: 0.8 },
+      { pattern: /JACKIE.*ib payment/i, category: "Other Income", source: "Freelance/Contract", confidence: 0.8 },
+      { pattern: /ADEYIGA.*ib payment/i, category: "Other Income", source: "Freelance/Contract", confidence: 0.8 },
+      { pattern: /SALARY|WAGE/i, category: "Employment", source: "Salary/Wages", confidence: 0.7 },
+      { pattern: /DIVIDEND/i, category: "Investment", source: "Dividend Income", confidence: 0.8 },
+      { pattern: /INTEREST.*CREDIT/i, category: "Investment", source: "Interest Income", confidence: 0.7 }
+    ],
+    
+    businessExpenses: [
+      // Retirement contributions
+      { pattern: /10XRA COL.*service agreement/i, category: "Retirement", description: "Retirement Annuity (10X)", confidence: 0.95 },
+      
+      // Medical expenses
+      { pattern: /DISC PREM.*medical aid/i, category: "Medical", description: "Medical Aid Contribution", confidence: 0.95 },
+      { pattern: /iK \*Dr Malcol|Dr\s+Malcol/i, category: "Medical", description: "Medical Professional Fees", confidence: 0.9 },
+      
+      // Business operations
+      { pattern: /BOOTLEGGER|SHIFT.*ESPRESS/i, category: "Business", description: "Business Coffee Expenses", confidence: 0.9 },
+      { pattern: /ROZPRINT/i, category: "Business", description: "Printing Services", confidence: 0.95 },
+      { pattern: /PERSONAL TAX SERVICE|TAX.*ADVISOR/i, category: "Professional", description: "Tax Advisory Services", confidence: 0.9 },
+      { pattern: /PAYU \* UC|I PAYU \* UC/i, category: "Education", description: "University of Cape Town", confidence: 0.9 },
+      { pattern: /POINT GARDEN SERVICE|GARDEN.*SERVICE/i, category: "Office", description: "Gardening/Maintenance Services", confidence: 0.85 },
+      
+      // Insurance and professional fees
+      { pattern: /DISCINSURE.*insurance|DISCINSURE.*debit transfer/i, category: "Insurance", description: "Insurance Premiums", confidence: 0.85 },
+      { pattern: /fee.*teletransmission.*inward|teletransmission.*fee/i, category: "Professional", description: "International Transfer Fees", confidence: 0.9 },
+      
+      // Software subscriptions (from credit card)
+      { pattern: /Google GSUITE|GOOGLE\*GSUITE/i, category: "Software", description: "Google Workspace", confidence: 0.9 },
+      { pattern: /MSFT \*|Microsoft/i, category: "Software", description: "Microsoft Office", confidence: 0.9 },
+      { pattern: /CLAUDE\.AI SUBSCRIPTION/i, category: "Software", description: "Claude AI", confidence: 0.9 },
+      
+      // Internet services
+      { pattern: /AFRIHOST|INTERNET.*SERVICE/i, category: "Business", description: "Internet Services", confidence: 0.8 }
+    ],
+    
+    personalExpenses: [
+      // Explicitly excluded as per your requirements
+      { pattern: /VIRGIN ACT.*NETCASH|GYM.*MEMBERSHIP/i, category: "Personal", description: "Gym Membership (EXCLUDED)", confidence: 0.9 },
+      { pattern: /OM UNITTRU.*unit trust|OLD MUTUAL.*INVESTMENT/i, category: "Investment", description: "Unit Trust Investment (EXCLUDED)", confidence: 0.9 },
+      { pattern: /Netflix|NETFLIX/i, category: "Entertainment", description: "Netflix Subscription (EXCLUDED)", confidence: 0.95 },
+      { pattern: /APPLE\.COM|APPLE.*SERVICES/i, category: "Entertainment", description: "Apple Services (EXCLUDED)", confidence: 0.9 },
+      { pattern: /YouTube|YOUTUBE|Google YouTube/i, category: "Entertainment", description: "YouTube Premium (EXCLUDED)", confidence: 0.9 },
+      { pattern: /SABC.*TV.*LICE|U\*SABC TV/i, category: "Entertainment", description: "SABC TV License (EXCLUDED)", confidence: 0.9 },
+      { pattern: /CARTRACK/i, category: "Personal", description: "Vehicle Tracking (EXCLUDED)", confidence: 0.9 },
+      { pattern: /MTN PREPAID|CELL.*PHONE|MOBILE/i, category: "Personal", description: "Mobile Phone", confidence: 0.8 }
+    ],
 
-  // Format currency
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-ZA', {
-      style: 'currency',
-      currency: 'ZAR'
-    }).format(amount);
+    homeExpenses: [
+      { pattern: /SBSA HOMEL.*bond repayment|HOME.*LOAN|MORTGAGE/i, category: "Mortgage", description: "Home Loan Payment", confidence: 0.95 },
+      { pattern: /SYSTEM INTEREST DEBIT.*ID|MORTGAGE.*INTEREST/i, category: "Mortgage", description: "Mortgage Interest", confidence: 0.95 },
+      { pattern: /INSURANCE PREMIUM.*IP|HOME.*INSURANCE/i, category: "Insurance", description: "Home Insurance", confidence: 0.85 },
+      { pattern: /MUNICIPAL.*RATES|CITY.*RATES/i, category: "Utilities", description: "Municipal Rates", confidence: 0.85 },
+      { pattern: /ELECTRICITY|ESKOM/i, category: "Utilities", description: "Electricity", confidence: 0.9 }
+    ],
+
+    // Special handling for TAKEALOT
+    takealotPattern: /M\*TAKEALO\*T|TAKEALO.*T/i,
+    
+    excludePatterns: [
+      /Ces - ib transfer|FUND TRANSFERS|INT ACNT TRF|AUTOBANK TRANSFER/i,
+      /fixed monthly fee|overdraft service fee|UCOUNT.*membership fee/i,
+      /fee.*mu primary sms|ADMINISTRATION FEE HL|rtd-not provided for/i,
+      /DEBIT ORDER REVERSAL|excess interest|HONOURING FEE/i,
+      /rtd-not provided for|AUTOBANK TRANSFER|DEBIT ORDER REVERSAL/i,
+      /INVESTECPB.*debit transfer/i // Investment transfers
+    ]
   };
 
-  // Add/Edit functions
+  // Real PDF Text Extraction Function
+  const extractTextFromPDF = async (file) => {
+    if (!pdfJsLoaded || !pdfjsLib.current) {
+      throw new Error('PDF.js library not loaded');
+    }
+
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await pdfjsLib.current.getDocument({ data: arrayBuffer }).promise;
+      
+      let fullText = '';
+      const pages = [];
+      
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        
+        // Extract text items and preserve positioning
+        const textItems = textContent.items.map(item => ({
+          text: item.str,
+          x: item.transform[4],
+          y: item.transform[5],
+          width: item.width,
+          height: item.height
+        }));
+        
+        // Sort by Y position (top to bottom) then X position (left to right)
+        textItems.sort((a, b) => {
+          if (Math.abs(a.y - b.y) > 5) { // Different lines
+            return b.y - a.y; // Top to bottom
+          }
+          return a.x - b.x; // Left to right on same line
+        });
+        
+        // Group items by line and join
+        let currentY = null;
+        let currentLine = [];
+        const lines = [];
+        
+        textItems.forEach(item => {
+          if (currentY === null || Math.abs(item.y - currentY) > 5) {
+            if (currentLine.length > 0) {
+              lines.push(currentLine.map(i => i.text).join(' '));
+            }
+            currentLine = [item];
+            currentY = item.y;
+          } else {
+            currentLine.push(item);
+          }
+        });
+        
+        if (currentLine.length > 0) {
+          lines.push(currentLine.map(i => i.text).join(' '));
+        }
+        
+        const pageText = lines.join('\n');
+        pages.push(pageText);
+        fullText += pageText + '\n';
+      }
+      
+      return { fullText, pages, pageCount: pdf.numPages };
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      throw new Error(`Failed to extract text from PDF: ${error.message}`);
+    }
+  };
+
+  // Enhanced transaction parsing for multiple bank formats
+  const parseTransactions = (text, fileName) => {
+    const transactions = [];
+    const lines = text.split('\n');
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Skip headers, empty lines, and non-transaction lines
+      if (!line || 
+          line.includes('Date') || 
+          line.includes('Description') || 
+          line.includes('Customer Care') || 
+          line.includes('Account') ||
+          line.includes('Transaction date range') ||
+          line.includes('Available balance') ||
+          line.length < 10) {
+        continue;
+      }
+      
+      // Multiple parsing patterns for different bank formats
+      const patterns = [
+        // Standard Bank format: "03 Mar PRECISE DIGITAIT25062ZA0706051 - teletransmission inward + 155 112.20 155 070.98"
+        {
+          regex: /^(\d{1,2}\s+\w{3})\s+(.+?)\s+([+-])\s*([\d\s,]+\.\d{2})\s+([\d\s,]+\.\d{2})$/,
+          parse: (match) => {
+            const [, date, description, sign, amount, balance] = match;
+            return {
+              date: date.trim(),
+              description: description.trim(),
+              amount: parseFloat(amount.replace(/[\s,]/g, '')),
+              type: sign === '+' ? 'credit' : 'debit',
+              balance: parseFloat(balance.replace(/[\s,]/g, ''))
+            };
+          }
+        },
+        
+        // Standard Bank fee format: "03 Mar PRECISE DIGITAIT25035ZA0728536 # - fee-teletransmission inward - 542.69 108 413.43"
+        {
+          regex: /^(\d{1,2}\s+\w{3})\s+(.+?)\s+#\s+-\s+(.+?)\s+-\s+([\d\s,]+\.\d{2})\s+([\d\s,]+\.\d{2})$/,
+          parse: (match) => {
+            const [, date, reference, description, amount, balance] = match;
+            return {
+              date: date.trim(),
+              description: `${reference.trim()} # - ${description.trim()}`,
+              amount: parseFloat(amount.replace(/[\s,]/g, '')),
+              type: 'debit',
+              balance: parseFloat(balance.replace(/[\s,]/g, ''))
+            };
+          }
+        },
+        
+        // Alternative format: "Date Description In (R) Out (R) Balance (R)"
+        {
+          regex: /^(\d{1,2}\s+\w{3})\s+(.+?)\s+(?:\+\s*)?([\d\s,.]+)?\s*-?\s*([\d\s,.]+)?\s*([\d\s,.]+)$/,
+          parse: (match) => {
+            const [, date, description, inAmount, outAmount, balance] = match;
+            const inValue = inAmount ? parseFloat(inAmount.replace(/[\s,]/g, '')) : 0;
+            const outValue = outAmount ? parseFloat(outAmount.replace(/[\s,]/g, '')) : 0;
+            
+            return {
+              date: date.trim(),
+              description: description.trim(),
+              amount: inValue > 0 ? inValue : outValue,
+              type: inValue > 0 ? 'credit' : 'debit',
+              balance: balance ? parseFloat(balance.replace(/[\s,]/g, '')) : 0
+            };
+          }
+        },
+        
+        // FNB/ABSA format with C/D indicators
+        {
+          regex: /^(\d{1,2}\/\d{1,2}\/\d{4})\s+(.+?)\s+([\d,.]+)\s*([CD])\s*([\d,.]+)$/,
+          parse: (match) => {
+            const [, date, description, amount, type, balance] = match;
+            return {
+              date: date.trim(),
+              description: description.trim(),
+              amount: parseFloat(amount.replace(/[,]/g, '')),
+              type: type === 'C' ? 'credit' : 'debit',
+              balance: parseFloat(balance.replace(/[,]/g, ''))
+            };
+          }
+        }
+      ];
+      
+      let transaction = null;
+      
+      for (const pattern of patterns) {
+        const match = line.match(pattern.regex);
+        if (match) {
+          try {
+            const parsed = pattern.parse(match);
+            if (parsed.amount > 0) {
+              transaction = {
+                id: `${fileName}_${Date.now()}_${Math.random()}`,
+                ...parsed,
+                sourceFile: fileName,
+                rawLine: line
+              };
+              break;
+            }
+          } catch (error) {
+            console.warn('Error parsing transaction:', error, line);
+          }
+        }
+      }
+      
+      if (transaction) {
+        transactions.push(transaction);
+      }
+    }
+    
+    return transactions;
+  };
+
+  // Categorize transaction with confidence scoring and special handling
+  const categorizeTransaction = (transaction) => {
+    const { description, amount, type } = transaction;
+    
+    // Check exclusion patterns first
+    for (const pattern of categorizationRules.excludePatterns) {
+      if (pattern.test(description)) {
+        return { 
+          category: 'exclude', 
+          reason: 'Inter-account transfer or bank fee',
+          confidence: 0.95
+        };
+      }
+    }
+
+    // Special handling for TAKEALOT - requires manual verification
+    if (categorizationRules.takealotPattern.test(description)) {
+      return {
+        category: 'takealot-review',
+        subcategory: 'Supplies',
+        confidence: 0.5,
+        cleanDescription: 'TAKEALOT Purchase - REQUIRES INVOICE REVIEW',
+        originalDescription: description,
+        amount: amount,
+        reason: 'TAKEALOT purchases need PDF invoice verification to separate business vs personal items',
+        specialNote: 'Only include business items (stationery, computer equipment), exclude personal items'
+      };
+    }
+    
+    let bestMatch = null;
+    let highestConfidence = 0;
+    
+    const ruleCategories = type === 'credit' ? 
+      [categorizationRules.income] : 
+      [categorizationRules.homeExpenses, categorizationRules.businessExpenses, categorizationRules.personalExpenses];
+    
+    for (const ruleSet of ruleCategories) {
+      for (const rule of ruleSet) {
+        if (rule.pattern.test(description) && rule.confidence > highestConfidence) {
+          
+          // Special handling for personal expenses - mark as excluded
+          const isPersonalExpense = ruleSet === categorizationRules.personalExpenses;
+          
+          bestMatch = {
+            category: type === 'credit' ? 'income' : 
+                     ruleSet === categorizationRules.homeExpenses ? 'homeExpense' :
+                     isPersonalExpense ? 'personalExpense' : 'businessExpense',
+            subcategory: rule.category,
+            confidence: rule.confidence,
+            cleanDescription: rule.description || rule.source,
+            originalDescription: description,
+            amount: amount,
+            matchedRule: rule.pattern.toString(),
+            isExcluded: isPersonalExpense,
+            exclusionReason: isPersonalExpense ? 'Personal expense - excluded as per requirements' : null
+          };
+          highestConfidence = rule.confidence;
+        }
+      }
+    }
+    
+    return bestMatch || { 
+      category: 'uncategorized', 
+      originalDescription: description, 
+      amount, 
+      type, 
+      confidence: 0,
+      reason: 'No matching categorization rule found'
+    };
+  };
+
+  // Process uploaded PDF files
+  const processPDFFiles = async (files) => {
+    if (!pdfJsLoaded) {
+      setProcessingStatus('PDF.js library not loaded. Please refresh and try again.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setProcessingStatus('Starting PDF processing...');
+    
+    const allTransactions = [];
+    const processedFiles = [];
+    const errors = [];
+    
+    try {
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
+        const file = files[fileIndex];
+        setProcessingStatus(`Processing ${file.name} (${fileIndex + 1}/${files.length})...`);
+        
+        try {
+          const extractedData = await extractTextFromPDF(file);
+          const transactions = parseTransactions(extractedData.fullText, file.name);
+          
+          allTransactions.push(...transactions);
+          processedFiles.push({
+            name: file.name,
+            size: file.size,
+            transactionCount: transactions.length,
+            pageCount: extractedData.pageCount,
+            processedAt: new Date()
+          });
+          
+          console.log(`Processed ${file.name}: ${transactions.length} transactions found`);
+          
+        } catch (fileError) {
+          console.error(`Error processing ${file.name}:`, fileError);
+          errors.push(`${file.name}: ${fileError.message}`);
+        }
+      }
+      
+      if (allTransactions.length === 0) {
+        setProcessingStatus('No transactions found in uploaded files. Please check PDF format.');
+        return;
+      }
+      
+      setUploadedFiles(prev => [...prev, ...processedFiles]);
+      setProcessingStatus(`Categorizing ${allTransactions.length} transactions...`);
+      
+      // Categorize all transactions
+      const categorizedTransactions = allTransactions.map(transaction => {
+        const result = categorizeTransaction(transaction);
+        return { ...transaction, ...result };
+      });
+      
+      setRawTransactions(prev => [...prev, ...categorizedTransactions]);
+      
+      // Separate and aggregate transactions by category
+      const income = categorizedTransactions.filter(t => t.category === 'income');
+      const business = categorizedTransactions.filter(t => t.category === 'businessExpense');
+      const personal = categorizedTransactions.filter(t => t.category === 'personalExpense');
+      const home = categorizedTransactions.filter(t => t.category === 'homeExpense');
+      const uncategorized = categorizedTransactions.filter(t => t.category === 'uncategorized');
+      const takealotReview = categorizedTransactions.filter(t => t.category === 'takealot-review');
+      
+      // Aggregate similar transactions
+      const aggregateTransactions = (transactions, excludePersonal = false) => {
+        const grouped = {};
+        transactions.forEach(t => {
+          // Skip personal expenses if excludePersonal is true
+          if (excludePersonal && t.isExcluded) {
+            return;
+          }
+          
+          const key = `${t.cleanDescription || t.originalDescription}_${t.subcategory}`;
+          if (grouped[key]) {
+            grouped[key].amount += t.amount;
+            grouped[key].transactionCount += 1;
+            grouped[key].sourceTransactions.push(t);
+          } else {
+            grouped[key] = {
+              id: Date.now() + Math.random(),
+              description: t.cleanDescription || t.originalDescription,
+              amount: t.amount,
+              period: 'extracted',
+              category: t.subcategory,
+              dataSource: t.isExcluded ? 'excluded' : 'auto-detected',
+              confidence: t.confidence,
+              notes: t.isExcluded ? `EXCLUDED: ${t.exclusionReason}` : `Auto-detected from: ${t.originalDescription}`,
+              transactionCount: 1,
+              sourceTransactions: [t],
+              matchedRule: t.matchedRule,
+              isExcluded: t.isExcluded || false,
+              exclusionReason: t.exclusionReason
+            };
+          }
+        });
+        return Object.values(grouped);
+      };
+      
+      // Update state with aggregated transactions
+      const newIncome = aggregateTransactions(income).map(entry => ({ ...entry, source: entry.category }));
+      const newBusiness = aggregateTransactions(business, true); // Exclude personal expenses
+      const newPersonal = aggregateTransactions(personal); // Keep all personal for reference
+      const newHome = aggregateTransactions(home);
+      
+      setIncomeEntries(prev => [...prev, ...newIncome]);
+      setBusinessExpenses(prev => [...prev, ...newBusiness]);
+      setPersonalExpenses(prev => [...prev, ...newPersonal]);
+      setHomeExpenses(prev => [...prev, ...newHome]);
+      setUncategorizedTransactions(prev => [...prev, ...uncategorized, ...takealotReview]);
+      
+      // Calculate home office expenses if home expenses found
+      if (home.length > 0) {
+        // Only calculate for mortgage interest and home insurance
+        const mortgageInterest = home.filter(h => h.subcategory === 'Mortgage' && h.cleanDescription === 'Mortgage Interest');
+        const homeInsurance = home.filter(h => h.subcategory === 'Insurance' && h.cleanDescription === 'Home Insurance');
+        
+        const totalMortgageInterest = mortgageInterest.reduce((sum, expense) => sum + expense.amount, 0);
+        const totalHomeInsurance = homeInsurance.reduce((sum, expense) => sum + expense.amount, 0);
+        
+        const homeOfficeExpenses = [];
+        
+        if (totalMortgageInterest > 0) {
+          const businessMortgageInterest = totalMortgageInterest * (homeOfficePercentage / 100);
+          homeOfficeExpenses.push({
+            id: Date.now() + Math.random(),
+            description: "Home Office - Mortgage Interest",
+            amount: businessMortgageInterest,
+            period: 'calculated',
+            category: 'Office',
+            dataSource: 'calculated',
+            confidence: 0.9,
+            notes: `${homeOfficePercentage}% of mortgage interest (R${totalMortgageInterest.toFixed(2)})`
+          });
+        }
+        
+        if (totalHomeInsurance > 0) {
+          const businessHomeInsurance = totalHomeInsurance * (homeOfficePercentage / 100);
+          homeOfficeExpenses.push({
+            id: Date.now() + Math.random(),
+            description: "Home Office - Home Insurance",
+            amount: businessHomeInsurance,
+            period: 'calculated',
+            category: 'Office',
+            dataSource: 'calculated',
+            confidence: 0.9,
+            notes: `${homeOfficePercentage}% of home insurance (R${totalHomeInsurance.toFixed(2)})`
+          });
+        }
+        
+        if (homeOfficeExpenses.length > 0) {
+          setBusinessExpenses(prev => [...prev, ...homeOfficeExpenses]);
+        }
+      }
+      
+      let statusMessage = `Successfully processed ${allTransactions.length} transactions from ${processedFiles.length} file(s)`;
+      if (errors.length > 0) {
+        statusMessage += `. Errors: ${errors.length}`;
+      }
+      
+      setProcessingStatus(statusMessage);
+      setTimeout(() => setProcessingStatus(''), 5000);
+      
+    } catch (error) {
+      console.error('Error processing PDFs:', error);
+      setProcessingStatus(`Error processing files: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle file upload
+  const handleFileUpload = (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length > 0) {
+      // Validate file types
+      const pdfFiles = files.filter(file => file.type === 'application/pdf');
+      if (pdfFiles.length !== files.length) {
+        alert('Please select only PDF files.');
+        event.target.value = '';
+        return;
+      }
+      
+      processPDFFiles(pdfFiles);
+    }
+    event.target.value = '';
+  };
+
+  // Manual entry functions
   const addIncomeEntry = () => {
     const newEntry = {
       id: Date.now(),
@@ -514,39 +635,35 @@ const DynamicTaxApp = () => {
       period: "annual",
       source: "Employment",
       dataSource: "manual",
-      notes: ""
+      notes: "",
+      confidence: 1.0
     };
     setIncomeEntries([...incomeEntries, newEntry]);
     setEditingEntry({ type: 'income', id: newEntry.id });
   };
 
-  const addExpenseEntry = () => {
+  const addExpenseEntry = (type = 'business') => {
     const newExpense = {
       id: Date.now(),
-      description: "New Business Expense",
+      description: type === 'business' ? "New Business Expense" : "New Personal Expense",
       amount: 0,
       period: "annual",
-      category: "Business",
+      category: type === 'business' ? "Business" : "Personal",
       dataSource: "manual",
-      notes: ""
+      notes: "",
+      confidence: 1.0
     };
-    setBusinessExpenses([...businessExpenses, newExpense]);
-    setEditingEntry({ type: 'expense', id: newExpense.id });
+    
+    if (type === 'business') {
+      setBusinessExpenses([...businessExpenses, newExpense]);
+    } else {
+      setPersonalExpenses([...personalExpenses, newExpense]);
+    }
+    
+    setEditingEntry({ type: type === 'business' ? 'expense' : 'personal', id: newExpense.id });
   };
 
-  const addPersonalExpense = () => {
-    const newExpense = {
-      id: Date.now(),
-      description: "New Personal Expense",
-      amount: 0,
-      period: "annual",
-      category: "Personal",
-      dataSource: "manual",
-      notes: ""
-    };
-    setPersonalExpenses([...personalExpenses, newExpense]);
-  };
-
+  // Update functions
   const updateIncomeEntry = (id, field, value) => {
     setIncomeEntries(incomeEntries.map(entry => 
       entry.id === id ? { 
@@ -577,6 +694,7 @@ const DynamicTaxApp = () => {
     ));
   };
 
+  // Delete functions
   const deleteIncomeEntry = (id) => {
     setIncomeEntries(incomeEntries.filter(entry => entry.id !== id));
   };
@@ -589,16 +707,7 @@ const DynamicTaxApp = () => {
     setPersonalExpenses(personalExpenses.filter(expense => expense.id !== id));
   };
 
-  // Bulk operations
-  const deleteSelectedEntries = (type, selectedIds) => {
-    if (type === 'income') {
-      setIncomeEntries(incomeEntries.filter(entry => !selectedIds.includes(entry.id)));
-    } else if (type === 'expense') {
-      setBusinessExpenses(businessExpenses.filter(expense => !selectedIds.includes(expense.id)));
-    }
-  };
-
-  // Move expense between business and personal
+  // Move functions
   const moveExpenseToBusiness = (personalExpense) => {
     const businessExpense = {
       ...personalExpense,
@@ -621,36 +730,113 @@ const DynamicTaxApp = () => {
     deleteExpenseEntry(businessExpense.id);
   };
 
-  // Validation
-  const validateEntry = (entry) => {
-    const errors = [];
-    if (!entry.description.trim()) errors.push("Description is required");
-    if (!entry.amount || entry.amount <= 0) errors.push("Amount must be greater than 0");
-    return errors;
+  const moveTransactionToCategory = (transaction, targetCategory) => {
+    const newEntry = {
+      id: Date.now() + Math.random(),
+      description: transaction.originalDescription,
+      amount: transaction.amount,
+      period: 'extracted',
+      category: targetCategory === 'income' ? 'Other' : targetCategory === 'business' ? 'Other' : 'Personal',
+      dataSource: 'manual',
+      confidence: 0.8,
+      notes: `Manually categorized from: ${transaction.originalDescription}`
+    };
+    
+    if (targetCategory === 'income') {
+      setIncomeEntries(prev => [...prev, { ...newEntry, source: 'Other' }]);
+    } else if (targetCategory === 'business') {
+      setBusinessExpenses(prev => [...prev, newEntry]);
+    } else if (targetCategory === 'personal') {
+      setPersonalExpenses(prev => [...prev, newEntry]);
+    }
+    
+    setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
   };
 
-  // Data source badge
-  const getDataSourceBadge = (dataSource) => {
-    const badges = {
-      'auto-detected': { color: 'bg-blue-100 text-blue-800', text: 'Auto' },
-      'manual': { color: 'bg-green-100 text-green-800', text: 'Manual' },
-      'modified': { color: 'bg-orange-100 text-orange-800', text: 'Modified' },
-      'calculated': { color: 'bg-purple-100 text-purple-800', text: 'Calc' },
-      'moved-from-personal': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
-      'moved-from-business': { color: 'bg-gray-100 text-gray-800', text: 'Moved' }
+  // Tax calculation function
+  const calculateTax = useCallback((taxableIncome, taxYear, age) => {
+    if (taxableIncome <= 0) return { tax: 0, effectiveRate: 0, marginalRate: 0, grossTax: 0, rebates: 0 };
+    
+    const yearData = taxBracketsData[taxYear];
+    if (!yearData) return { tax: 0, effectiveRate: 0, marginalRate: 0, grossTax: 0, rebates: 0 };
+
+    const { brackets, rebates, thresholds } = yearData;
+    
+    const threshold = age === 'under65' ? thresholds.under65 : 
+                     age === 'under75' ? thresholds.under75 : thresholds.over75;
+    
+    if (taxableIncome <= threshold) {
+      return { tax: 0, effectiveRate: 0, marginalRate: 0, grossTax: 0, rebates: 0 };
+    }
+
+    let tax = 0;
+    let marginalRate = 0;
+    
+    for (const bracket of brackets) {
+      if (taxableIncome > bracket.max) {
+        continue;
+      } else {
+        const incomeInBracket = taxableIncome - (bracket.min - 1);
+        tax = bracket.cumulative + (incomeInBracket * bracket.rate);
+        marginalRate = bracket.rate;
+        break;
+      }
+    }
+    
+    let totalRebates = rebates.primary;
+    if (age === 'under75') totalRebates += rebates.secondary;
+    if (age === 'over75') totalRebates += rebates.secondary + rebates.tertiary;
+    
+    const finalTax = Math.max(0, tax - totalRebates);
+    const effectiveRate = taxableIncome > 0 ? (finalTax / taxableIncome) * 100 : 0;
+    
+    return { 
+      tax: finalTax, 
+      effectiveRate, 
+      marginalRate: marginalRate * 100,
+      grossTax: tax,
+      rebates: totalRebates
     };
-    const badge = badges[dataSource] || badges['manual'];
-    return (
-      <span className={`px-2 py-1 text-xs rounded-full ${badge.color}`}>
-        {badge.text}
-      </span>
-    );
+  }, []);
+
+  // Calculate period amounts
+  const calculateAnnualAmount = (amount, period) => {
+    switch (period) {
+      case 'extracted': return amount;
+      case '6months': return amount * 2;
+      case '3months': return amount * 4;
+      case 'monthly': return amount * 12;
+      case 'weekly': return amount * 52;
+      case 'annual': return amount;
+      default: return amount;
+    }
+  };
+
+  // Calculate totals - exclude personal expenses from business calculations
+  const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
+    sum + calculateAnnualAmount(entry.amount, entry.period), 0);
+  const totalBusinessExpenses = businessExpenses
+    .filter(expense => !expense.isExcluded) // Only include non-excluded expenses
+    .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
+  const totalPersonalExpenses = personalExpenses.reduce((sum, expense) => 
+    sum + calculateAnnualAmount(expense.amount, expense.period), 0);
+  const totalDeductibleExpenses = totalBusinessExpenses; // Only business expenses are deductible
+  const taxableIncome = Math.max(0, totalAnnualIncome - totalDeductibleExpenses);
+  const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
+  const monthlyTaxRequired = taxCalculation.tax / 12;
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: 'ZAR'
+    }).format(amount);
   };
 
   // Export functions
   const exportToCSV = () => {
     const csvContent = [
-      ["Type", "Description", "Amount", "Period", "Annual Amount", "Category/Source", "Data Source", "Notes"],
+      ["Type", "Description", "Amount", "Period", "Annual Amount", "Category/Source", "Data Source", "Confidence", "Excluded", "Notes"],
       ...incomeEntries.map(entry => [
         "Income", 
         entry.description, 
@@ -659,6 +845,8 @@ const DynamicTaxApp = () => {
         calculateAnnualAmount(entry.amount, entry.period), 
         entry.source,
         entry.dataSource,
+        entry.confidence || 'N/A',
+        'No',
         entry.notes || ""
       ]),
       ...businessExpenses.map(expense => [
@@ -669,200 +857,260 @@ const DynamicTaxApp = () => {
         calculateAnnualAmount(expense.amount, expense.period), 
         expense.category,
         expense.dataSource,
+        expense.confidence || 'N/A',
+        expense.isExcluded ? 'Yes - Not Deductible' : 'No',
         expense.notes || ""
       ]),
       ...personalExpenses.map(expense => [
-        "Personal Expense (Non-Deductible)", 
+        "Personal Expense", 
         expense.description, 
         expense.amount, 
         expense.period,
         calculateAnnualAmount(expense.amount, expense.period), 
         expense.category,
         expense.dataSource,
+        expense.confidence || 'N/A',
+        expense.isExcluded ? 'Yes - Personal' : 'No',
         expense.notes || ""
       ]),
       [],
-      ["Summary"],
+      ["SUMMARY"],
       ["Total Annual Income", totalAnnualIncome],
-      ["Total Business Expenses", totalBusinessExpenses],
+      ["Total Deductible Business Expenses", totalDeductibleExpenses],
+      ["Total Personal Expenses (Excluded)", totalPersonalExpenses],
       ["Taxable Income", taxableIncome],
       ["Tax Liability", taxCalculation.tax],
       ["Monthly Tax Required", monthlyTaxRequired],
       ["Effective Tax Rate", taxCalculation.effectiveRate.toFixed(2) + "%"],
       ["Marginal Tax Rate", taxCalculation.marginalRate.toFixed(1) + "%"],
+      ["Home Office Percentage", homeOfficePercentage + "%"],
       [],
-      ["Data Quality"],
-      ["Auto-detected entries", incomeEntries.filter(e => e.dataSource === 'auto-detected').length + businessExpenses.filter(e => e.dataSource === 'auto-detected').length],
-      ["Manual entries", incomeEntries.filter(e => e.dataSource === 'manual').length + businessExpenses.filter(e => e.dataSource === 'manual').length],
-      ["Modified entries", incomeEntries.filter(e => e.dataSource === 'modified').length + businessExpenses.filter(e => e.dataSource === 'modified').length],
-      ["Personal expenses for review", personalExpenses.length]
+      ["EXCLUSIONS APPLIED"],
+      ["Virgin Gym Membership", "Excluded as personal expense"],
+      ["Old Mutual Unit Trusts", "Excluded as investment, not retirement"],
+      ["Netflix/Apple/YouTube/SABC", "Excluded as personal entertainment"],
+      ["CARTRACK Vehicle Tracking", "Excluded as not business expense"],
+      ["TAKEALOT Purchases", "Require PDF invoice verification"],
+      [],
+      ["DATA SOURCES"],
+      ["Uploaded PDF Files", uploadedFiles.length],
+      ["Auto-detected Transactions", rawTransactions.filter(t => t.confidence > 0.7).length],
+      ["Manual Entries", incomeEntries.filter(e => e.dataSource === 'manual').length + businessExpenses.filter(e => e.dataSource === 'manual').length],
+      ["Uncategorized Items", uncategorizedTransactions.length]
     ].map(row => row.join(",")).join("\n");
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tax-calculation-detailed-${selectedTaxYear}.csv`;
+    a.download = `sa-tax-calculation-${selectedTaxYear}-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   };
 
-  const exportTaxSummary = () => {
-    const autoDetectedIncome = incomeEntries.filter(e => e.dataSource === 'auto-detected');
-    const manualIncome = incomeEntries.filter(e => e.dataSource === 'manual');
-    const autoDetectedExpenses = businessExpenses.filter(e => e.dataSource === 'auto-detected');
-    const manualExpenses = businessExpenses.filter(e => e.dataSource === 'manual');
+  const exportToPDF = async () => {
+    try {
+      const { jsPDF } = await import('jspdf');
+      
+      const doc = new jsPDF();
+      let y = 20;
+      
+      // Header
+      doc.setFontSize(18);
+      doc.setFont("helvetica", "bold");
+      doc.text("SOUTH AFRICAN TAX CALCULATION REPORT", 20, y);
+      y += 10;
+      
+      doc.setFontSize(14);
+      doc.text(`${selectedTaxYear} Tax Year Assessment`, 20, y);
+      y += 10;
+      
+      doc.setFontSize(10);
+      doc.setFont("helvetica", "normal");
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 20, y);
+      y += 5;
+      doc.text(`PDF Sources: ${uploadedFiles.map(f => f.name).join(', ')}`, 20, y);
+      y += 5;
+      doc.text(`Transactions Processed: ${rawTransactions.length} | Manual Entries: ${incomeEntries.filter(e => e.dataSource === 'manual').length + businessExpenses.filter(e => e.dataSource === 'manual').length}`, 20, y);
+      y += 10;
+      
+      // Executive Summary
+      doc.setFontSize(12);
+      doc.setFont("helvetica", "bold");
+      doc.text("EXECUTIVE SUMMARY", 20, y);
+      y += 8;
+      
+      doc.setFont("helvetica", "normal");
+      const summaryItems = [
+        `Total Annual Income: ${formatCurrency(totalAnnualIncome)}`,
+        `Total Deductible Expenses: ${formatCurrency(totalDeductibleExpenses)}`,
+        `Total Personal Expenses (Excluded): ${formatCurrency(totalPersonalExpenses)}`,
+        `Taxable Income: ${formatCurrency(taxableIncome)}`,
+        `Annual Tax Liability: ${formatCurrency(taxCalculation.tax)}`,
+        `Monthly Provisional Tax: ${formatCurrency(monthlyTaxRequired)}`,
+        `Effective Tax Rate: ${taxCalculation.effectiveRate.toFixed(2)}%`,
+        `Marginal Tax Rate: ${taxCalculation.marginalRate.toFixed(1)}%`,
+        `Home Office Deduction: ${homeOfficePercentage}%`
+      ];
+      
+      summaryItems.forEach(item => {
+        doc.text(item, 20, y);
+        y += 6;
+      });
+      y += 10;
+      
+      // Income breakdown
+      if (incomeEntries.length > 0) {
+        doc.setFont("helvetica", "bold");
+        doc.text("INCOME BREAKDOWN", 20, y);
+        y += 8;
+        
+        incomeEntries.forEach((entry, index) => {
+          if (y > 270) {
+            doc.addPage();
+            y = 20;
+          }
+          doc.setFont("helvetica", "normal");
+          const annualAmount = calculateAnnualAmount(entry.amount, entry.period);
+          doc.text(`${index + 1}. ${entry.description}: ${formatCurrency(annualAmount)}`, 25, y);
+          y += 5;
+          
+          doc.setFontSize(9);
+          doc.text(`   Source: ${entry.dataSource} | Confidence: ${entry.confidence ? Math.round(entry.confidence * 100) + '%' : 'N/A'} | Category: ${entry.source}`, 25, y);
+          y += 4;
+          
+          if (entry.notes) {
+            doc.text(`   Notes: ${entry.notes}`, 25, y);
+            y += 4;
+          }
+          
+          doc.setFontSize(10);
+          y += 2;
+        });
+        y += 10;
+      }
+      
+      // Business expenses breakdown
+      if (businessExpenses.length > 0) {
+        if (y > 200) {
+          doc.addPage();
+          y = 20;
+        }
+        
+        doc.setFont("helvetica", "bold");
+        doc.text("DEDUCTIBLE BUSINESS EXPENSES", 20, y);
+        y += 8;
+        
+        businessExpenses.filter(e => !e.isExcluded).forEach((expense, index) => {
+          if (y > 270) {
+            doc.addPage();
+            y = 20;
+          }
+          
+          doc.setFont("helvetica", "normal");
+          const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
+          doc.text(`${index + 1}. ${expense.description}: ${formatCurrency(annualAmount)}`, 25, y);
+          y += 5;
+          
+          doc.setFontSize(9);
+          doc.text(`   Source: ${expense.dataSource} | Confidence: ${expense.confidence ? Math.round(expense.confidence * 100) + '%' : 'N/A'} | Category: ${expense.category}`, 25, y);
+          y += 4;
+          
+          if (expense.notes) {
+            doc.text(`   Notes: ${expense.notes}`, 25, y);
+            y += 4;
+          }
+          
+          doc.setFontSize(10);
+          y += 2;
+        });
+      }
+      
+      // Excluded expenses
+      const excludedExpenses = personalExpenses.filter(e => e.isExcluded);
+      if (excludedExpenses.length > 0) {
+        if (y > 200) {
+          doc.addPage();
+          y = 20;
+        }
+        
+        doc.setFont("helvetica", "bold");
+        doc.text("EXCLUDED PERSONAL EXPENSES", 20, y);
+        y += 8;
+        
+        excludedExpenses.forEach((expense, index) => {
+          if (y > 270) {
+            doc.addPage();
+            y = 20;
+          }
+          
+          doc.setFont("helvetica", "normal");
+          const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
+          doc.text(`${index + 1}. ${expense.description}: ${formatCurrency(annualAmount)}`, 25, y);
+          y += 5;
+          
+          doc.setFontSize(9);
+          doc.text(`   Reason: ${expense.exclusionReason || 'Personal expense'}`, 25, y);
+          y += 6;
+        });
+      }
+      
+      // Footer on all pages
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.text(`Page ${i} of ${pageCount}`, 180, 290);
+        doc.text("Generated by SA Tax Calculator with Smart Categorization", 20, 290);
+      }
+      
+      doc.save(`SA-Tax-Report-${selectedTaxYear}-${new Date().toISOString().split('T')[0]}.pdf`);
+      
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Error generating PDF. Please try again.');
+    }
+  };
+
+  // Clear all data
+  const clearAllData = () => {
+    if (confirm('Are you sure you want to clear all data? This cannot be undone.')) {
+      setIncomeEntries([]);
+      setBusinessExpenses([]);
+      setPersonalExpenses([]);
+      setHomeExpenses([]);
+      setRawTransactions([]);
+      setUploadedFiles([]);
+      setUncategorizedTransactions([]);
+      setEditingEntry(null);
+    }
+  };
+
+  // Data source badge with exclusion handling
+  const getDataSourceBadge = (dataSource, confidence, isExcluded = false) => {
+    const badges = {
+      'auto-detected': { color: 'bg-blue-100 text-blue-800', text: 'Auto' },
+      'manual': { color: 'bg-green-100 text-green-800', text: 'Manual' },
+      'modified': { color: 'bg-orange-100 text-orange-800', text: 'Modified' },
+      'calculated': { color: 'bg-purple-100 text-purple-800', text: 'Calc' },
+      'moved-from-personal': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
+      'moved-from-business': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
+      'excluded': { color: 'bg-red-100 text-red-800', text: 'Excluded' }
+    };
     
-    const summaryText = `
-SOUTH AFRICAN TAX CALCULATION SUMMARY
-${selectedTaxYear} TAX YEAR - DETAILED BREAKDOWN
-Generated: ${new Date().toLocaleString()}
-Application: Dynamic SA Tax Calculator
-
-═══════════════════════════════════════════════════════════════════
-
-TAXPAYER INFORMATION:
-- Age Category: ${userAge}
-- Tax Year: ${selectedTaxYear} (${selectedTaxYear-1} March - ${selectedTaxYear} February)
-- Home Office Percentage: ${homeOfficePercentage}%
-
-DATA QUALITY SUMMARY:
-- Auto-detected entries: ${autoDetectedIncome.length + autoDetectedExpenses.length}
-- Manual entries: ${manualIncome.length + manualExpenses.length}
-- Modified entries: ${incomeEntries.filter(e => e.dataSource === 'modified').length + businessExpenses.filter(e => e.dataSource === 'modified').length}
-- Personal expenses tracked: ${personalExpenses.length}
-
-═══════════════════════════════════════════════════════════════════
-
-INCOME SUMMARY (ANNUAL):
-
-Auto-Detected Income Sources:
-${autoDetectedIncome.map(entry => 
-  `• ${entry.description}: ${formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
-    Period: ${entry.period} | Source: ${entry.source}
-    Notes: ${entry.notes || 'None'}
-    Data Source: ${entry.dataSource}`
-).join('\n')}
-
-Manual Income Sources:
-${manualIncome.map(entry => 
-  `• ${entry.description}: ${formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
-    Period: ${entry.period} | Source: ${entry.source}
-    Notes: ${entry.notes || 'None'}
-    Data Source: ${entry.dataSource}`
-).join('\n')}
-
-TOTAL ANNUAL INCOME: ${formatCurrency(totalAnnualIncome)}
-
-═══════════════════════════════════════════════════════════════════
-
-ALLOWABLE BUSINESS EXPENSES (ANNUAL):
-
-Auto-Detected Business Expenses:
-${autoDetectedExpenses.map(expense => 
-  `• ${expense.description}: ${formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-    Period: ${expense.period} | Category: ${expense.category}
-    Notes: ${expense.notes || 'None'}
-    Data Source: ${expense.dataSource}`
-).join('\n')}
-
-Manual Business Expenses:
-${manualExpenses.map(expense => 
-  `• ${expense.description}: ${formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-    Period: ${expense.period} | Category: ${expense.category}
-    Notes: ${expense.notes || 'None'}
-    Data Source: ${expense.dataSource}`
-).join('\n')}
-
-TOTAL ALLOWABLE BUSINESS EXPENSES: ${formatCurrency(totalBusinessExpenses)}
-
-═══════════════════════════════════════════════════════════════════
-
-PERSONAL EXPENSES (NON-DEDUCTIBLE) - FOR REVIEW:
-${personalExpenses.length > 0 ? personalExpenses.map(expense => 
-  `• ${expense.description}: ${formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-    Period: ${expense.period} | Category: ${expense.category}
-    Notes: ${expense.notes || 'None'}
-    Data Source: ${expense.dataSource}`
-).join('\n') : 'None tracked'}
-
-═══════════════════════════════════════════════════════════════════
-
-TAX CALCULATION (${selectedTaxYear} SARS TAX BRACKETS):
-
-Taxable Income Calculation:
-- Total Annual Income: ${formatCurrency(totalAnnualIncome)}
-- Less: Total Business Expenses: ${formatCurrency(totalBusinessExpenses)}
-- TAXABLE INCOME: ${formatCurrency(taxableIncome)}
-
-Tax Calculation Details:
-- Gross Tax (before rebates): ${formatCurrency(taxCalculation.grossTax)}
-- Less: Tax Rebates (${userAge}): ${formatCurrency(taxCalculation.rebates)}
-- NET TAX LIABILITY: ${formatCurrency(taxCalculation.tax)}
-
-Tax Rates:
-- Effective Tax Rate: ${taxCalculation.effectiveRate.toFixed(2)}%
-- Marginal Tax Rate: ${taxCalculation.marginalRate.toFixed(1)}%
-
-═══════════════════════════════════════════════════════════════════
-
-PROVISIONAL TAX REQUIREMENTS:
-
-Annual Tax Liability: ${formatCurrency(taxCalculation.tax)}
-Monthly Provisional Tax Required: ${formatCurrency(monthlyTaxRequired)}
-Monthly Net Income After Tax: ${formatCurrency(monthlyIncomeAfterTax)}
-
-Percentage of Gross Income for Tax: ${((taxCalculation.tax / totalAnnualIncome) * 100).toFixed(1)}%
-
-═══════════════════════════════════════════════════════════════════
-
-SUPPORTING DOCUMENTATION REQUIRED:
-
-Auto-Detected Entries:
-- Bank statements covering the analysis period
-- Salary advices and employment contracts
-- Medical aid certificates
-- Retirement annuity statements
-- Invoice copies for business expenses
-
-Manual Entries:
-- Supporting receipts and invoices
-- Contracts or agreements
-- Additional documentation as per entry notes
-
-Home Office Calculation:
-- Floor plan or measurement verification
-- Home-related expense receipts (bond, insurance, utilities)
-
-═══════════════════════════════════════════════════════════════════
-
-IMPORTANT NOTES FOR TAX PRACTITIONER:
-
-1. This calculation is based on SARS ${selectedTaxYear} tax year brackets and rebates
-2. All auto-detected entries were derived from bank statement analysis
-3. Manual entries require additional verification and supporting documentation
-4. Personal expenses listed may need review for potential business deductibility
-5. Home office percentage (${homeOfficePercentage}%) should be verified against actual measurements
-6. This is an estimate - final tax calculation should be verified by qualified tax practitioner
-
-═══════════════════════════════════════════════════════════════════
-
-Generated by Dynamic SA Tax Calculator
-Date: ${new Date().toLocaleString()}
-Version: Professional Tax Analysis Tool
-    `;
-
-    const blob = new Blob([summaryText], { type: 'text/plain' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `tax-practitioner-summary-${selectedTaxYear}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    const badge = badges[dataSource] || badges['manual'];
+    const confidenceText = confidence ? ` (${Math.round(confidence * 100)}%)` : '';
+    
+    // Override with exclusion styling if excluded
+    const finalBadge = isExcluded ? badges['excluded'] : badge;
+    
+    return (
+      <span className={`px-2 py-1 text-xs rounded-full ${finalBadge.color}`}>
+        {finalBadge.text}{confidenceText}
+      </span>
+    );
   };
 
   return (
@@ -870,62 +1118,81 @@ Version: Professional Tax Analysis Tool
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">Dynamic SA Tax Calculator</h1>
-          <p className="text-gray-600">Automated tax year detection with real-time calculations</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">SA Tax Calculator with Smart Categorization</h1>
+          <p className="text-gray-600">Real PDF.js integration with South African tax compliance</p>
+          <div className="mt-2 flex justify-center space-x-4">
+            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
+              pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
+            }`}>
+              <CheckCircle className="mr-1" size={16} />
+              PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
+            </span>
+            {uploadedFiles.length > 0 && (
+              <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                <FileText className="mr-1" size={16} />
+                {uploadedFiles.length} files processed
+              </span>
+            )}
+          </div>
         </div>
 
-        {/* Settings Panel */}
+        {/* Controls Panel */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold flex items-center">
               <Settings className="mr-2" size={20} />
-              Settings & Configuration
+              Controls & Settings
             </h2>
-            <div className="flex space-x-2">
+            <div className="flex items-center space-x-2">
               <button
                 onClick={() => setEditMode(!editMode)}
-                className={`flex items-center px-4 py-2 rounded-lg font-medium ${
+                className={`flex items-center px-3 py-2 rounded-lg font-medium ${
                   editMode ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
-                } hover:opacity-90 transition-opacity`}
+                } hover:opacity-90`}
               >
-                {editMode ? <Save className="mr-2" size={16} /> : <Edit2 className="mr-2" size={16} />}
+                {editMode ? <Save className="mr-1" size={16} /> : <Edit2 className="mr-1" size={16} />}
                 {editMode ? 'Save Changes' : 'Edit Mode'}
               </button>
-              <label className="flex items-center px-4 py-2 bg-orange-600 text-white rounded-lg font-medium hover:bg-orange-700 cursor-pointer">
-                <Upload className="mr-2" size={16} />
-                Import CSV
-                <input
-                  type="file"
-                  accept=".csv"
-                  onChange={importFromCSV}
-                  className="hidden"
-                />
-              </label>
+              
+              <button
+                onClick={() => setShowTransactionDetails(!showTransactionDetails)}
+                className={`flex items-center px-3 py-2 rounded-lg font-medium ${
+                  showTransactionDetails ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                {showTransactionDetails ? <EyeOff className="mr-1" size={16} /> : <Eye className="mr-1" size={16} />}
+                Details
+              </button>
+              
               <button
                 onClick={exportToCSV}
-                className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700"
+                className="flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
               >
-                <Download className="mr-2" size={16} />
-                Export CSV
+                <Download className="mr-1" size={16} />
+                CSV
               </button>
+              
               <button
                 onClick={exportToPDF}
-                className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700"
+                className="flex items-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
               >
-                <FileText className="mr-2" size={16} />
-                Export PDF
+                <FileText className="mr-1" size={16} />
+                PDF
               </button>
-              <button
-                onClick={exportTaxSummary}
-                className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700"
-              >
-                <FileText className="mr-2" size={16} />
-                Tax Summary
-              </button>
+              
+              {(rawTransactions.length > 0 || incomeEntries.length > 0 || businessExpenses.length > 0) && (
+                <button
+                  onClick={clearAllData}
+                  className="flex items-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  <Trash className="mr-1" size={16} />
+                  Clear
+                </button>
+              )}
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Tax Year</label>
               <select
@@ -935,7 +1202,7 @@ Version: Professional Tax Analysis Tool
               >
                 {Object.keys(taxBracketsData).map(year => (
                   <option key={year} value={year}>
-                    {year} Tax Year ({parseInt(year)-1} Mar - {year} Feb)
+                    {year} Tax Year
                   </option>
                 ))}
               </select>
@@ -962,147 +1229,57 @@ Version: Professional Tax Analysis Tool
                 value={homeOfficePercentage}
                 onChange={(e) => setHomeOfficePercentage(parseFloat(e.target.value) || 0)}
                 className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                placeholder="8.2"
               />
             </div>
-          </div>
-        </div>
-
-        {/* Data Quality & Validation Panel */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h2 className="text-xl font-semibold mb-4 flex items-center">
-            <AlertCircle className="mr-2" size={20} />
-            Data Quality & Review Status
-          </h2>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-            <div className="bg-blue-50 rounded-lg p-4">
-              <h3 className="font-semibold text-blue-800 mb-2">Auto-Detected Entries</h3>
-              <div className="text-2xl font-bold text-blue-700">
-                {incomeEntries.filter(e => e.dataSource === 'auto-detected').length + 
-                 businessExpenses.filter(e => e.dataSource === 'auto-detected').length}
-              </div>
-              <p className="text-sm text-blue-600">Found from bank statements</p>
-            </div>
             
-            <div className="bg-green-50 rounded-lg p-4">
-              <h3 className="font-semibold text-green-800 mb-2">Manual Entries</h3>
-              <div className="text-2xl font-bold text-green-700">
-                {incomeEntries.filter(e => e.dataSource === 'manual').length + 
-                 businessExpenses.filter(e => e.dataSource === 'manual').length}
-              </div>
-              <p className="text-sm text-green-600">Added manually</p>
-            </div>
-            
-            <div className="bg-orange-50 rounded-lg p-4">
-              <h3 className="font-semibold text-orange-800 mb-2">Modified Entries</h3>
-              <div className="text-2xl font-bold text-orange-700">
-                {incomeEntries.filter(e => e.dataSource === 'modified').length + 
-                 businessExpenses.filter(e => e.dataSource === 'modified').length}
-              </div>
-              <p className="text-sm text-orange-600">Auto-detected but edited</p>
-            </div>
-          </div>
-          
-          {/* Validation Warnings */}
-          <div className="space-y-3">
-            {incomeEntries.some(e => !e.description.trim() || !e.amount || e.amount <= 0) && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="text-red-600" size={16} />
-                  <span className="font-medium text-red-800">Income Validation Issues</span>
-                </div>
-                <p className="text-red-700 text-sm mt-1">
-                  Some income entries have missing descriptions or invalid amounts. Please review and correct.
-                </p>
-              </div>
-            )}
-            
-            {businessExpenses.some(e => !e.description.trim() || !e.amount || e.amount <= 0) && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="text-red-600" size={16} />
-                  <span className="font-medium text-red-800">Expense Validation Issues</span>
-                </div>
-                <p className="text-red-700 text-sm mt-1">
-                  Some business expenses have missing descriptions or invalid amounts. Please review and correct.
-                </p>
-              </div>
-            )}
-            
-            {personalExpenses.length > 0 && (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="text-yellow-600" size={16} />
-                  <span className="font-medium text-yellow-800">Personal Expenses Need Review</span>
-                </div>
-                <p className="text-yellow-700 text-sm mt-1">
-                  You have {personalExpenses.length} personal expenses. Review if any should be business deductible.
-                </p>
-              </div>
-            )}
-            
-            {(incomeEntries.length === 0 || businessExpenses.length === 0) && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="text-blue-600" size={16} />
-                  <span className="font-medium text-blue-800">Missing Data</span>
-                </div>
-                <p className="text-blue-700 text-sm mt-1">
-                  {incomeEntries.length === 0 && "No income entries found. "}
-                  {businessExpenses.length === 0 && "No business expenses found. "}
-                  Add entries manually or upload bank statements.
-                </p>
-              </div>
-            )}
-          </div>
-          
-          {/* Quick Actions */}
-          <div className="mt-4 pt-4 border-t">
-            <h4 className="font-medium text-gray-800 mb-2">Quick Actions</h4>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setEditMode(true)}
-                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                Enable Edit Mode
-              </button>
-              <button
-                onClick={addIncomeEntry}
-                className="px-3 py-1 text-sm bg-green-100 text-green-700 rounded hover:bg-green-200"
-              >
-                Add Income
-              </button>
-              <button
-                onClick={addExpenseEntry}
-                className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
-              >
-                Add Business Expense
-              </button>
-              <label className="px-3 py-1 text-sm bg-orange-100 text-orange-700 rounded hover:bg-orange-200 cursor-pointer">
-                Import CSV
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">PDF Upload</label>
+              <label className={`w-full p-2 ${pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'} text-white rounded-lg cursor-pointer flex items-center justify-center`}>
+                <Upload className="mr-2" size={16} />
+                Upload PDFs
                 <input
                   type="file"
-                  accept=".csv"
-                  onChange={importFromCSV}
+                  accept=".pdf"
+                  multiple
+                  onChange={handleFileUpload}
                   className="hidden"
+                  disabled={isProcessing || !pdfJsLoaded}
                 />
               </label>
-              <button
-                onClick={exportToPDF}
-                className="px-3 py-1 text-sm bg-red-100 text-red-700 rounded hover:bg-red-200"
-              >
-                Generate PDF Report
-              </button>
-              <button
-                onClick={exportTaxSummary}
-                className="px-3 py-1 text-sm bg-purple-100 text-purple-700 rounded hover:bg-purple-200"
-              >
-                Export for Tax Practitioner
-              </button>
             </div>
           </div>
+          
+          {processingStatus && (
+            <div className="mt-4 flex items-center space-x-2">
+              {isProcessing && <RefreshCw className="animate-spin" size={16} />}
+              <span className={`text-sm ${isProcessing ? 'text-blue-600' : processingStatus.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                {processingStatus}
+              </span>
+            </div>
+          )}
         </div>
+
+        {/* File Processing Status */}
+        {uploadedFiles.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <h3 className="text-lg font-semibold text-blue-700 mb-4">
+              Processing Status ({uploadedFiles.length} files)
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {uploadedFiles.map((file, index) => (
+                <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="font-medium text-sm truncate">{file.name}</div>
+                  <div className="text-xs text-gray-600 mt-1">
+                    {file.transactionCount} transactions • {file.pageCount} pages
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {file.processedAt.toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -1113,6 +1290,7 @@ Version: Professional Tax Analysis Tool
                 <p className="text-2xl font-bold text-green-600">
                   {formatCurrency(totalAnnualIncome)}
                 </p>
+                <p className="text-xs text-gray-500">{incomeEntries.length} sources</p>
               </div>
               <DollarSign className="text-green-600" size={32} />
             </div>
@@ -1121,10 +1299,11 @@ Version: Professional Tax Analysis Tool
           <div className="bg-white rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Business Expenses</p>
+                <p className="text-sm text-gray-600">Deductible Expenses</p>
                 <p className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(totalBusinessExpenses)}
+                  {formatCurrency(totalDeductibleExpenses)}
                 </p>
+                <p className="text-xs text-gray-500">{businessExpenses.filter(e => !e.isExcluded).length} items</p>
               </div>
               <CheckCircle className="text-blue-600" size={32} />
             </div>
@@ -1157,6 +1336,93 @@ Version: Professional Tax Analysis Tool
           </div>
         </div>
 
+        {/* Uncategorized Transactions */}
+        {uncategorizedTransactions.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-orange-700">
+                Review Required ({uncategorizedTransactions.length})
+              </h3>
+              <span className="text-sm text-gray-600">Manual review needed</span>
+            </div>
+            
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start space-x-3">
+                <AlertCircle className="text-orange-600 mt-1" size={20} />
+                <div>
+                  <h4 className="font-semibold text-orange-800 mb-1">Manual Review Required</h4>
+                  <p className="text-orange-700 text-sm">
+                    These transactions need your attention. TAKEALOT purchases require PDF invoice verification to separate business from personal items.
+                  </p>
+                </div>
+              </div>
+            </div>
+            
+            <div className="space-y-3">
+              {uncategorizedTransactions.map((transaction) => (
+                <div key={transaction.id} className={`p-4 rounded-lg border-l-4 ${
+                  transaction.category === 'takealot-review' ? 'bg-yellow-50 border-yellow-500' : 'bg-gray-50 border-orange-500'
+                }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="font-medium">{transaction.originalDescription}</div>
+                      <div className="text-sm text-gray-600">
+                        {transaction.date} • {formatCurrency(transaction.amount)} • {transaction.type}
+                      </div>
+                      {transaction.category === 'takealot-review' && (
+                        <div className="mt-2 p-2 bg-yellow-100 rounded text-sm">
+                          <strong>⚠️ TAKEALOT PURCHASE:</strong> Review PDF invoice to identify business items (stationery, computer equipment) vs personal items (e.g., football)
+                        </div>
+                      )}
+                      {transaction.reason && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          Reason: {transaction.reason}
+                        </div>
+                      )}
+                      <div className="text-xs text-gray-500 mt-1">
+                        From: {transaction.sourceFile}
+                      </div>
+                    </div>
+                    
+                    <div className="flex space-x-2 ml-4">
+                      {transaction.category !== 'takealot-review' && (
+                        <>
+                          <button
+                            onClick={() => moveTransactionToCategory(transaction, 'income')}
+                            className="px-3 py-1 text-xs bg-green-200 text-green-700 rounded hover:bg-green-300"
+                            title="Move to Income"
+                          >
+                            Income
+                          </button>
+                          <button
+                            onClick={() => moveTransactionToCategory(transaction, 'business')}
+                            className="px-3 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
+                            title="Move to Business Expenses"
+                          >
+                            Business
+                          </button>
+                          <button
+                            onClick={() => moveTransactionToCategory(transaction, 'personal')}
+                            className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                            title="Move to Personal Expenses"
+                          >
+                            Personal
+                          </button>
+                        </>
+                      )}
+                      {transaction.category === 'takealot-review' && (
+                        <div className="text-xs text-yellow-700 font-medium">
+                          Manual Invoice Review Required
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Income Section */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
@@ -1172,145 +1438,128 @@ Version: Professional Tax Analysis Tool
                 </button>
               )}
               <span className="text-sm text-gray-600">
-                {incomeEntries.filter(e => e.dataSource === 'auto-detected').length} auto-detected, 
-                {incomeEntries.filter(e => e.dataSource === 'manual').length} manual
+                {incomeEntries.length} sources • {formatCurrency(totalAnnualIncome)} total
               </span>
             </div>
           </div>
           
           <div className="space-y-3">
-            {incomeEntries.map((entry) => (
-              <div key={entry.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-                {editMode ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {getDataSourceBadge(entry.dataSource)}
-                        <span className="text-sm text-gray-600">ID: {entry.id}</span>
-                      </div>
-                      <button
-                        onClick={() => deleteIncomeEntry(entry.id)}
-                        className="p-1 text-red-600 hover:bg-red-100 rounded"
-                        title="Delete Entry"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Description</label>
+            {incomeEntries.length === 0 ? (
+              <div className="text-center text-gray-500 py-8">
+                <FileUp className="mx-auto mb-4" size={48} />
+                <p>No income sources found.</p>
+                <p className="text-sm">Upload PDF bank statements or add manually to get started.</p>
+              </div>
+            ) : (
+              incomeEntries.map((entry) => (
+                <div key={entry.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
+                  {editMode && editingEntry?.type === 'income' && editingEntry?.id === entry.id ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                         <input
                           type="text"
                           value={entry.description}
                           onChange={(e) => updateIncomeEntry(entry.id, 'description', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="Income description"
+                          className="p-2 border border-gray-300 rounded"
+                          placeholder="Description"
                         />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Amount</label>
                         <input
                           type="number"
                           step="0.01"
                           value={entry.amount}
                           onChange={(e) => updateIncomeEntry(entry.id, 'amount', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="0.00"
+                          className="p-2 border border-gray-300 rounded"
+                          placeholder="Amount"
                         />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Period</label>
-                        <select
-                          value={entry.period}
-                          onChange={(e) => updateIncomeEntry(entry.id, 'period', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="annual">Annual</option>
-                          <option value="6months">6 Months</option>
-                          <option value="3months">3 Months</option>
-                          <option value="monthly">Monthly</option>
-                          <option value="weekly">Weekly</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Category</label>
                         <select
                           value={entry.source}
                           onChange={(e) => updateIncomeEntry(entry.id, 'source', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
+                          className="p-2 border border-gray-300 rounded"
                         >
                           {incomeCategories.map(cat => (
                             <option key={cat} value={cat}>{cat}</option>
                           ))}
                         </select>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Notes</label>
                       <input
                         type="text"
                         value={entry.notes || ''}
                         onChange={(e) => updateIncomeEntry(entry.id, 'notes', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded text-sm"
-                        placeholder="Additional notes or source details"
+                        className="w-full p-2 border border-gray-300 rounded"
+                        placeholder="Notes"
                       />
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => setEditingEntry(null)}
+                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => deleteIncomeEntry(entry.id)}
+                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">Annual Amount:</span>
-                      <span className="font-semibold text-green-700">
-                        {formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
+                  ) : (
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
-                        {getDataSourceBadge(entry.dataSource)}
+                        {getDataSourceBadge(entry.dataSource, entry.confidence, false)}
                         <span className="font-medium text-lg">{entry.description}</span>
+                        {editMode && (
+                          <button
+                            onClick={() => setEditingEntry({ type: 'income', id: entry.id })}
+                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
                       </div>
                       <div className="text-right">
                         <div className="text-xl font-bold text-green-600">
                           {formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
                         </div>
-                        <div className="text-sm text-gray-600">
-                          {formatCurrency(entry.amount)} per {entry.period}
-                        </div>
+                        <div className="text-sm text-gray-600">{entry.source}</div>
                       </div>
                     </div>
-                    
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>Category: {entry.source}</span>
-                      {entry.notes && (
-                        <span className="italic">💡 {entry.notes}</span>
+                  )}
+                  
+                  {entry.notes && !editMode && (
+                    <div className="mt-2 text-sm text-gray-600">💡 {entry.notes}</div>
+                  )}
+                  
+                  {showTransactionDetails && entry.sourceTransactions && (
+                    <div className="mt-3 p-3 bg-white rounded border">
+                      <div className="text-xs font-medium text-gray-600 mb-2">Source Transactions:</div>
+                      {entry.sourceTransactions.slice(0, 5).map((transaction, idx) => (
+                        <div key={idx} className="text-xs text-gray-500 flex justify-between mb-1">
+                          <span>{transaction.date}: {transaction.originalDescription}</span>
+                          <span>{formatCurrency(transaction.amount)}</span>
+                        </div>
+                      ))}
+                      {entry.sourceTransactions.length > 5 && (
+                        <div className="text-xs text-gray-400">
+                          ... and {entry.sourceTransactions.length - 5} more transactions
+                        </div>
                       )}
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
-            
-            <div className="border-t-2 pt-4 font-bold flex justify-between text-lg">
-              <span>Total Annual Income:</span>
-              <span className="text-green-700">{formatCurrency(totalAnnualIncome)}</span>
-            </div>
+                  )}
+                </div>
+              ))
+            )}
           </div>
         </div>
 
         {/* Business Expenses Section */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-blue-700">Allowable Business Expenses</h3>
+            <h3 className="text-lg font-semibold text-blue-700">Deductible Business Expenses</h3>
             <div className="flex space-x-2">
               {editMode && (
                 <button
-                  onClick={addExpenseEntry}
+                  onClick={() => addExpenseEntry('business')}
                   className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
                 >
                   <Plus className="mr-1" size={16} />
@@ -1318,152 +1567,154 @@ Version: Professional Tax Analysis Tool
                 </button>
               )}
               <span className="text-sm text-gray-600">
-                {businessExpenses.filter(e => e.dataSource === 'auto-detected').length} auto-detected, 
-                {businessExpenses.filter(e => e.dataSource === 'manual').length} manual
+                {businessExpenses.filter(e => !e.isExcluded).length} items • {formatCurrency(totalDeductibleExpenses)} deductible
               </span>
             </div>
           </div>
           
           <div className="space-y-3">
             {businessExpenses.map((expense) => (
-              <div key={expense.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500">
-                {editMode ? (
+              <div key={expense.id} className={`p-4 rounded-lg border-l-4 ${expense.isExcluded ? 'bg-red-50 border-red-400' : 'bg-gray-50 border-blue-500'}`}>
+                {editMode && editingEntry?.type === 'expense' && editingEntry?.id === expense.id ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {getDataSourceBadge(expense.dataSource)}
-                        <span className="text-sm text-gray-600">ID: {expense.id}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={expense.description}
+                        onChange={(e) => updateExpenseEntry(expense.id, 'description', e.target.value)}
+                        className="p-2 border border-gray-300 rounded"
+                        placeholder="Description"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={expense.amount}
+                        onChange={(e) => updateExpenseEntry(expense.id, 'amount', e.target.value)}
+                        className="p-2 border border-gray-300 rounded"
+                        placeholder="Amount"
+                      />
+                      <select
+                        value={expense.category}
+                        onChange={(e) => updateExpenseEntry(expense.id, 'category', e.target.value)}
+                        className="p-2 border border-gray-300 rounded"
+                      >
+                        {expenseCategories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      value={expense.notes || ''}
+                      onChange={(e) => updateExpenseEntry(expense.id, 'notes', e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded"
+                      placeholder="Notes"
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setEditingEntry(null)}
+                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                      >
+                        Save
+                      </button>
+                      {!expense.isExcluded && (
                         <button
                           onClick={() => moveExpenseToPersonal(expense)}
-                          className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                          title="Move to Personal Expenses"
+                          className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
                         >
                           → Personal
                         </button>
-                      </div>
+                      )}
                       <button
                         onClick={() => deleteExpenseEntry(expense.id)}
-                        className="p-1 text-red-600 hover:bg-red-100 rounded"
-                        title="Delete Entry"
+                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
                       >
-                        <Trash2 size={16} />
+                        Delete
                       </button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Description</label>
-                        <input
-                          type="text"
-                          value={expense.description}
-                          onChange={(e) => updateExpenseEntry(expense.id, 'description', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="Expense description"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Amount</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={expense.amount}
-                          onChange={(e) => updateExpenseEntry(expense.id, 'amount', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="0.00"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Period</label>
-                        <select
-                          value={expense.period}
-                          onChange={(e) => updateExpenseEntry(expense.id, 'period', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="annual">Annual</option>
-                          <option value="6months">6 Months</option>
-                          <option value="3months">3 Months</option>
-                          <option value="monthly">Monthly</option>
-                          <option value="weekly">Weekly</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Category</label>
-                        <select
-                          value={expense.category}
-                          onChange={(e) => updateExpenseEntry(expense.id, 'category', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                        >
-                          {expenseCategories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Notes</label>
-                      <input
-                        type="text"
-                        value={expense.notes || ''}
-                        onChange={(e) => updateExpenseEntry(expense.id, 'notes', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded text-sm"
-                        placeholder="Additional notes, receipts, or justification"
-                      />
-                    </div>
-                    
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">Annual Amount:</span>
-                      <span className="font-semibold text-blue-700">
-                        {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-                      </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        {getDataSourceBadge(expense.dataSource)}
-                        <span className="font-medium text-lg">{expense.description}</span>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-blue-600">
-                          {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      {getDataSourceBadge(expense.dataSource, expense.confidence, expense.isExcluded)}
+                      <span className={`font-medium text-lg ${expense.isExcluded ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
+                        {expense.description}
+                      </span>
+                      {expense.isExcluded && (
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                          NOT DEDUCTIBLE
+                        </span>
+                      )}
+                      {editMode && (
+                        <div className="flex space-x-1">
+                          <button
+                            onClick={() => setEditingEntry({ type: 'expense', id: expense.id })}
+                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          {!expense.isExcluded && (
+                            <button
+                              onClick={() => moveExpenseToPersonal(expense)}
+                              className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                            >
+                              → Personal
+                            </button>
+                          )}
                         </div>
-                        <div className="text-sm text-gray-600">
-                          {formatCurrency(expense.amount)} per {expense.period}
-                        </div>
-                      </div>
+                      )}
                     </div>
-                    
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>Category: {expense.category}</span>
-                      {expense.notes && (
-                        <span className="italic">💡 {expense.notes}</span>
+                    <div className="text-right">
+                      <div className={`text-xl font-bold ${expense.isExcluded ? 'text-gray-400 line-through' : 'text-blue-600'}`}>
+                        {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                      </div>
+                      <div className="text-sm text-gray-600">{expense.category}</div>
+                      {expense.isExcluded && (
+                        <div className="text-xs text-red-600 font-medium">Excluded from Tax Calc</div>
                       )}
                     </div>
                   </div>
                 )}
+                
+                {expense.notes && !editMode && (
+                  <div className="mt-2 text-sm text-gray-600">💡 {expense.notes}</div>
+                )}
+                
+                {expense.exclusionReason && (
+                  <div className="mt-2 text-sm text-red-600 bg-red-100 p-2 rounded">
+                    <strong>Exclusion Reason:</strong> {expense.exclusionReason}
+                  </div>
+                )}
+                
+                {showTransactionDetails && expense.sourceTransactions && (
+                  <div className="mt-3 p-3 bg-white rounded border">
+                    <div className="text-xs font-medium text-gray-600 mb-2">Source Transactions:</div>
+                    {expense.sourceTransactions.slice(0, 5).map((transaction, idx) => (
+                      <div key={idx} className="text-xs text-gray-500 flex justify-between mb-1">
+                        <span>{transaction.date}: {transaction.originalDescription}</span>
+                        <span>{formatCurrency(transaction.amount)}</span>
+                      </div>
+                    ))}
+                    {expense.sourceTransactions.length > 5 && (
+                      <div className="text-xs text-gray-400">
+                        ... and {expense.sourceTransactions.length - 5} more transactions
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
-            
-            <div className="border-t-2 pt-4 font-bold flex justify-between text-lg">
-              <span>Total Business Expenses:</span>
-              <span className="text-blue-700">{formatCurrency(totalBusinessExpenses)}</span>
-            </div>
           </div>
         </div>
 
-        {/* Personal Expenses Section (Non-Deductible) */}
+        {/* Personal Expenses Section */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-700">Personal Expenses (Non-Deductible)</h3>
+            <h3 className="text-lg font-semibold text-gray-700">Personal Expenses (Excluded from Business Deductions)</h3>
             <div className="flex space-x-2">
               {editMode && (
                 <button
-                  onClick={addPersonalExpense}
+                  onClick={() => addExpenseEntry('personal')}
                   className="flex items-center px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
                 >
                   <Plus className="mr-1" size={16} />
@@ -1471,19 +1722,18 @@ Version: Professional Tax Analysis Tool
                 </button>
               )}
               <span className="text-sm text-gray-600">
-                {personalExpenses.length} items tracked
+                {personalExpenses.length} items • {formatCurrency(totalPersonalExpenses)} total (NOT deductible)
               </span>
             </div>
           </div>
           
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-4">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
             <div className="flex items-start space-x-3">
-              <AlertCircle className="text-yellow-600 mt-1" size={20} />
+              <X className="text-red-600 mt-1" size={20} />
               <div>
-                <h4 className="font-semibold text-yellow-800 mb-1">Review These Expenses</h4>
-                <p className="text-yellow-700 text-sm">
-                  These expenses are currently classified as personal and won't reduce your tax liability. 
-                  Review each item - if any should be business expenses, you can move them using the "→ Business" button.
+                <h4 className="font-semibold text-red-800 mb-1">Excluded from Business Deductions</h4>
+                <p className="text-red-700 text-sm">
+                  These personal expenses are NOT included in your business deductions as per your requirements: Virgin gym, Old Mutual unit trusts, Netflix, Apple, YouTube, SABC, and CARTRACK.
                 </p>
               </div>
             </div>
@@ -1491,164 +1741,132 @@ Version: Professional Tax Analysis Tool
           
           <div className="space-y-3">
             {personalExpenses.map((expense) => (
-              <div key={expense.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-gray-400">
-                {editMode ? (
+              <div key={expense.id} className={`p-4 rounded-lg border-l-4 ${
+                expense.isExcluded ? 'bg-red-50 border-red-400' : 'bg-gray-50 border-gray-400'
+              }`}>
+                {editMode && editingEntry?.type === 'personal' && editingEntry?.id === expense.id ? (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-2">
-                        {getDataSourceBadge(expense.dataSource)}
-                        <span className="text-sm text-gray-600">ID: {expense.id}</span>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <input
+                        type="text"
+                        value={expense.description}
+                        onChange={(e) => updatePersonalExpense(expense.id, 'description', e.target.value)}
+                        className="p-2 border border-gray-300 rounded"
+                        placeholder="Description"
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={expense.amount}
+                        onChange={(e) => updatePersonalExpense(expense.id, 'amount', e.target.value)}
+                        className="p-2 border border-gray-300 rounded"
+                        placeholder="Amount"
+                      />
+                      <select
+                        value={expense.category}
+                        onChange={(e) => updatePersonalExpense(expense.id, 'category', e.target.value)}
+                        className="p-2 border border-gray-300 rounded"
+                      >
+                        <option value="Personal">Personal</option>
+                        <option value="Entertainment">Entertainment</option>
+                        <option value="Health">Health</option>
+                        <option value="Transport">Transport</option>
+                        <option value="Investment">Investment</option>
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      value={expense.notes || ''}
+                      onChange={(e) => updatePersonalExpense(expense.id, 'notes', e.target.value)}
+                      className="w-full p-2 border border-gray-300 rounded"
+                      placeholder="Notes"
+                    />
+                    <div className="flex space-x-2">
+                      <button
+                        onClick={() => setEditingEntry(null)}
+                        className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
+                      >
+                        Save
+                      </button>
+                      {!expense.isExcluded && (
                         <button
                           onClick={() => moveExpenseToBusiness(expense)}
-                          className="px-2 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
-                          title="Move to Business Expenses"
+                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
                         >
                           → Business
                         </button>
-                      </div>
+                      )}
                       <button
                         onClick={() => deletePersonalExpense(expense.id)}
-                        className="p-1 text-red-600 hover:bg-red-100 rounded"
-                        title="Delete Entry"
+                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
                       >
-                        <Trash2 size={16} />
+                        Delete
                       </button>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Description</label>
-                        <input
-                          type="text"
-                          value={expense.description}
-                          onChange={(e) => updatePersonalExpense(expense.id, 'description', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="Expense description"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Amount</label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={expense.amount}
-                          onChange={(e) => updatePersonalExpense(expense.id, 'amount', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                          placeholder="0.00"
-                        />
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Period</label>
-                        <select
-                          value={expense.period}
-                          onChange={(e) => updatePersonalExpense(expense.id, 'period', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="annual">Annual</option>
-                          <option value="6months">6 Months</option>
-                          <option value="3months">3 Months</option>
-                          <option value="monthly">Monthly</option>
-                          <option value="weekly">Weekly</option>
-                        </select>
-                      </div>
-                      
-                      <div>
-                        <label className="block text-xs text-gray-600 mb-1">Category</label>
-                        <select
-                          value={expense.category}
-                          onChange={(e) => updatePersonalExpense(expense.id, 'category', e.target.value)}
-                          className="w-full p-2 border border-gray-300 rounded text-sm"
-                        >
-                          <option value="Personal">Personal</option>
-                          <option value="Entertainment">Entertainment</option>
-                          <option value="Health">Health</option>
-                          <option value="Transport">Transport</option>
-                          <option value="Food">Food</option>
-                          <option value="Clothing">Clothing</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-xs text-gray-600 mb-1">Notes</label>
-                      <input
-                        type="text"
-                        value={expense.notes || ''}
-                        onChange={(e) => updatePersonalExpense(expense.id, 'notes', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded text-sm"
-                        placeholder="Why this is personal vs business expense"
-                      />
-                    </div>
-                    
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-gray-600">Annual Amount:</span>
-                      <span className="font-semibold text-gray-700">
-                        {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-                      </span>
                     </div>
                   </div>
                 ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        {getDataSourceBadge(expense.dataSource)}
-                        <span className="font-medium text-lg">{expense.description}</span>
-                        {editMode && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3">
+                      {getDataSourceBadge(expense.dataSource, expense.confidence, expense.isExcluded)}
+                      <span className={`font-medium text-lg ${expense.isExcluded ? 'text-red-700' : 'text-gray-700'}`}>
+                        {expense.description}
+                      </span>
+                      {expense.isExcluded && (
+                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
+                          EXCLUDED
+                        </span>
+                      )}
+                      {editMode && (
+                        <div className="flex space-x-1">
                           <button
-                            onClick={() => moveExpenseToBusiness(expense)}
-                            className="px-2 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
-                            title="Move to Business Expenses"
+                            onClick={() => setEditingEntry({ type: 'personal', id: expense.id })}
+                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
                           >
-                            → Business
+                            <Edit2 size={16} />
                           </button>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-gray-600">
-                          {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                          {!expense.isExcluded && (
+                            <button
+                              onClick={() => moveExpenseToBusiness(expense)}
+                              className="px-2 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
+                            >
+                              → Business
+                            </button>
+                          )}
                         </div>
-                        <div className="text-sm text-gray-500">
-                          {formatCurrency(expense.amount)} per {expense.period}
-                        </div>
-                      </div>
+                      )}
                     </div>
-                    
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>Category: {expense.category}</span>
-                      {expense.notes && (
-                        <span className="italic">💡 {expense.notes}</span>
+                    <div className="text-right">
+                      <div className={`text-xl font-bold ${expense.isExcluded ? 'text-red-600' : 'text-gray-600'}`}>
+                        {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                      </div>
+                      <div className="text-sm text-gray-500">{expense.category}</div>
+                      {expense.isExcluded && (
+                        <div className="text-xs text-red-600 font-medium">Not Deductible</div>
                       )}
                     </div>
                   </div>
                 )}
+                
+                {expense.notes && !editMode && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    💡 {expense.notes}
+                  </div>
+                )}
+                
+                {expense.exclusionReason && (
+                  <div className="mt-2 text-sm text-red-600 bg-red-100 p-2 rounded">
+                    <strong>Exclusion Reason:</strong> {expense.exclusionReason}
+                  </div>
+                )}
               </div>
             ))}
-            
-            {personalExpenses.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
-                <p>No personal expenses tracked.</p>
-                <p className="text-sm">Add personal expenses here for complete financial tracking.</p>
-              </div>
-            ) : (
-              <div className="border-t-2 pt-4 font-bold flex justify-between text-lg">
-                <span>Total Personal Expenses:</span>
-                <span className="text-gray-700">
-                  {formatCurrency(personalExpenses.reduce((sum, expense) => 
-                    sum + calculateAnnualAmount(expense.amount, expense.period), 0
-                  ))}
-                </span>
-              </div>
-            )}
           </div>
         </div>
 
-        {/* Tax Calculation Breakdown */}
+        {/* Tax Calculation */}
         <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
           <h3 className="text-lg font-semibold mb-4 text-purple-700">
-            📊 Tax Calculation Breakdown - {selectedTaxYear} Tax Year
+            📊 Tax Calculation - {selectedTaxYear} Tax Year
           </h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1658,8 +1876,8 @@ Version: Professional Tax Analysis Tool
                 <span className="font-semibold">{formatCurrency(totalAnnualIncome)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Less: Business Expenses:</span>
-                <span className="font-semibold text-blue-600">({formatCurrency(totalBusinessExpenses)})</span>
+                <span>Less: Deductible Business Expenses:</span>
+                <span className="font-semibold text-blue-600">({formatCurrency(totalDeductibleExpenses)})</span>
               </div>
               <div className="flex justify-between border-t pt-2">
                 <span>Taxable Income:</span>
@@ -1670,17 +1888,28 @@ Version: Professional Tax Analysis Tool
                 <span className="font-semibold">{formatCurrency(taxCalculation.grossTax)}</span>
               </div>
               <div className="flex justify-between">
-                <span>Less: Tax Rebates:</span>
+                <span>Less: Tax Rebates ({userAge}):</span>
                 <span className="font-semibold text-green-600">({formatCurrency(taxCalculation.rebates)})</span>
               </div>
               <div className="flex justify-between border-t-2 pt-2 text-lg font-bold">
                 <span>Net Tax Liability:</span>
                 <span className="text-red-600">{formatCurrency(taxCalculation.tax)}</span>
               </div>
+              
+              {/* Show excluded personal expenses */}
+              <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
+                <div className="text-sm font-medium text-red-800 mb-1">Personal Expenses (Excluded):</div>
+                <div className="text-sm text-red-700">
+                  {formatCurrency(totalPersonalExpenses)} in personal expenses were excluded from business deductions
+                </div>
+                <div className="text-xs text-red-600 mt-1">
+                  Includes: Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK
+                </div>
+              </div>
             </div>
             
             <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-semibold mb-3">Tax Rates & Info</h4>
+              <h4 className="font-semibold mb-3">Tax Information & Compliance</h4>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span>Effective Tax Rate:</span>
@@ -1696,21 +1925,66 @@ Version: Professional Tax Analysis Tool
                 </div>
                 <div className="flex justify-between">
                   <span>Monthly After-Tax Income:</span>
-                  <span className="font-medium text-green-600">{formatCurrency(monthlyIncomeAfterTax)}</span>
+                  <span className="font-medium text-green-600">{formatCurrency((totalAnnualIncome - taxCalculation.tax) / 12)}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Tax Threshold ({userAge}):</span>
-                  <span className="font-medium">{formatCurrency(taxBracketsData[selectedTaxYear].thresholds[userAge])}</span>
+                <div className="border-t pt-2 mt-2">
+                  <div className="text-xs text-gray-600 mb-1">Home Office Deduction:</div>
+                  <div className="text-xs">{homeOfficePercentage}% of mortgage interest & home insurance</div>
+                </div>
+                <div className="border-t pt-2 mt-2">
+                  <div className="text-xs text-gray-600">Provisional Tax Payments:</div>
+                  <div className="text-xs">1st: 31 Aug {selectedTaxYear} • 2nd: 28 Feb {selectedTaxYear + 1}</div>
+                </div>
+                <div className="border-t pt-2 mt-2">
+                  <div className="text-xs text-orange-600 font-medium">⚠️ TAKEALOT Review Required</div>
+                  <div className="text-xs text-orange-700">Review PDF invoices for business vs personal items</div>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
+        {/* Empty State */}
+        {incomeEntries.length === 0 && businessExpenses.length === 0 && personalExpenses.length === 0 && uploadedFiles.length === 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+            <div className="flex items-center justify-center mb-6">
+              <FileUp className="mr-3 text-blue-600" size={64} />
+              <div className={`px-3 py-1 rounded-full text-sm ${
+                pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
+              }`}>
+                PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
+              </div>
+            </div>
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">SA Tax Calculator with Smart Categorization</h3>
+            <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+              Upload your bank statement PDFs for automatic transaction categorization following South African tax requirements. 
+              Personal expenses (Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK) are automatically excluded.
+              TAKEALOT purchases require manual PDF invoice review to separate business items from personal.
+            </p>
+            <label className={`inline-flex items-center px-6 py-3 ${
+              pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
+            } text-white rounded-lg cursor-pointer text-lg`}>
+              <Upload className="mr-2" size={20} />
+              Upload Bank Statement PDFs
+              <input
+                type="file"
+                accept=".pdf"
+                multiple
+                onChange={handleFileUpload}
+                className="hidden"
+                disabled={isProcessing || !pdfJsLoaded}
+              />
+            </label>
+            <p className="text-sm text-gray-500 mt-4">
+              Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec PDF statements<br/>
+              Automatically applies 8.2% home office deduction to mortgage interest and home insurance
+            </p>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="text-center text-gray-600 text-sm">
-          <p>This calculation is an estimate based on SARS tax brackets for the {selectedTaxYear} tax year.</p>
-          <p>Please consult with a qualified tax practitioner for official tax filing and advice.</p>
+          <p>⚖️ Please consult with a qualified tax practitioner for official tax filing and advice</p>
           <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
         </div>
       </div>
@@ -1718,4 +1992,4 @@ Version: Professional Tax Analysis Tool
   );
 };
 
-export default DynamicTaxApp;
+export default ProductionTaxCalculator;
