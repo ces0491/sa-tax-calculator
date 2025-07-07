@@ -14,6 +14,12 @@ const SATaxCalculator = () => {
   const [showTransactionDetails, setShowTransactionDetails] = useState(false);
   const [pdfJsLoaded, setPdfJsLoaded] = useState(false);
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Logging states
+  const [debugMode, setDebugMode] = useState(false);
+  const [processingLogs, setProcessingLogs] = useState([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const [extractedTexts, setExtractedTexts] = useState([]);
 
   // Data states
   const [incomeEntries, setIncomeEntries] = useState([]);
@@ -29,17 +35,65 @@ const SATaxCalculator = () => {
   const incomeCategories = ["Employment", "Freelance", "Investment", "Rental", "Business", "Other"];
   const expenseCategories = ["Office", "Medical", "Retirement", "Professional", "Education", "Travel", "Equipment", "Software", "Insurance", "Utilities", "Marketing", "Training", "Other"];
 
-  // Tab definitions
-  const tabs = [
-    { id: 'overview', name: 'Overview', icon: TrendingUp },
-    { id: 'upload', name: 'Upload & Process', icon: Upload },
-    { id: 'income', name: 'Income', icon: DollarSign },
-    { id: 'expenses', name: 'Business Expenses', icon: CheckCircle },
-    { id: 'personal', name: 'Personal Expenses', icon: X },
-    { id: 'review', name: 'Review Required', icon: AlertCircle },
-    { id: 'tax', name: 'Tax Calculation', icon: Calculator },
-    { id: 'reports', name: 'Reports', icon: FileText }
-  ];
+  // Helper functions
+  function getCurrentTaxYear() {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+    return currentMonth >= 2 ? currentYear : currentYear - 1;
+  }
+
+  // Comprehensive logging system
+  const logMessage = (level, category, message, data = null) => {
+    const timestamp = new Date().toISOString();
+    const logEntry = {
+      id: Date.now() + Math.random(),
+      timestamp,
+      level, // 'info', 'warn', 'error', 'debug'
+      category, // 'pdf-load', 'text-extract', 'transaction-parse', 'categorization'
+      message,
+      data
+    };
+    
+    setProcessingLogs(prev => [...prev, logEntry]);
+    
+    // Also log to console in debug mode
+    if (debugMode) {
+      console.log(`[${level.toUpperCase()}] ${category}: ${message}`, data);
+    }
+    
+    return logEntry;
+  };
+
+  const clearLogs = () => {
+    setProcessingLogs([]);
+    setExtractedTexts([]);
+  };
+
+  const downloadLogs = () => {
+    const logData = {
+      timestamp: new Date().toISOString(),
+      processingLogs,
+      extractedTexts,
+      summary: {
+        totalLogs: processingLogs.length,
+        errors: processingLogs.filter(log => log.level === 'error').length,
+        warnings: processingLogs.filter(log => log.level === 'warn').length,
+        filesProcessed: extractedTexts.length,
+        transactionsFound: rawTransactions.length
+      }
+    };
+    
+    const blob = new Blob([JSON.stringify(logData, null, 2)], { type: 'application/json' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pdf-processing-logs-${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
 
   // Load PDF.js
   useEffect(() => {
@@ -108,8 +162,6 @@ const SATaxCalculator = () => {
       
       // Other legitimate business income
       { pattern: /CASHFOCUS SALARY/i, category: "Employment", source: "Employment Income", confidence: 0.9 },
-      
-      // Note: Removed ib payments, interest, and other items that should be excluded
     ],
     
     businessExpenses: [
@@ -147,9 +199,6 @@ const SATaxCalculator = () => {
       
       // Business insurance
       { pattern: /DISCINSURE.*insurance.*premium/i, category: "Insurance", description: "Business Insurance", confidence: 0.8 },
-      
-      // Business equipment and supplies (from TAKEALOT - requires verification)
-      // Note: TAKEALOT requires manual review as specified
     ],
     
     personalExpenses: [
@@ -210,14 +259,6 @@ const SATaxCalculator = () => {
     ]
   };
 
-  // Helper functions
-  function getCurrentTaxYear() {
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
-    return currentMonth >= 2 ? currentYear : currentYear - 1;
-  }
-
   const calculateAnnualAmount = (amount, period) => {
     if (!amount) return 0;
     const multipliers = { daily: 365, weekly: 52, monthly: 12, annually: 1 };
@@ -269,93 +310,318 @@ const SATaxCalculator = () => {
   const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
   const monthlyTaxRequired = taxCalculation.tax / 12;
 
-  // PDF Processing
+  // PDF Processing with comprehensive logging
   const handleFileUpload = async (event) => {
     const files = Array.from(event.target.files);
-    if (files.length === 0 || !pdfJsLoaded) return;
+    if (files.length === 0) {
+      logMessage('warn', 'file-upload', 'No files selected');
+      return;
+    }
+    
+    if (!pdfJsLoaded) {
+      logMessage('error', 'file-upload', 'PDF.js not loaded yet');
+      return;
+    }
+
+    logMessage('info', 'file-upload', `Starting processing of ${files.length} file(s)`, { 
+      fileNames: files.map(f => f.name),
+      fileSizes: files.map(f => f.size)
+    });
 
     setIsProcessing(true);
     setProcessingStatus('Starting PDF processing...');
+    clearLogs();
 
     try {
-      for (const file of files) {
-        setProcessingStatus(`Processing ${file.name}...`);
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        logMessage('info', 'file-process', `Processing file ${i + 1}/${files.length}: ${file.name}`, {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type
+        });
+        
+        setProcessingStatus(`Processing ${file.name} (${i + 1}/${files.length})...`);
         await processPDF(file);
       }
-      setProcessingStatus(`Successfully processed ${files.length} file(s)`);
+      
+      const successMessage = `Successfully processed ${files.length} file(s)`;
+      logMessage('info', 'file-upload', successMessage);
+      setProcessingStatus(successMessage);
       setTimeout(() => setProcessingStatus(''), 3000);
+      
     } catch (error) {
-      console.error('Error processing files:', error);
-      setProcessingStatus(`Error: ${error.message}`);
+      const errorMessage = `Error processing files: ${error.message}`;
+      logMessage('error', 'file-upload', errorMessage, { error: error.stack });
+      console.error('File processing error:', error);
+      setProcessingStatus(errorMessage);
     } finally {
       setIsProcessing(false);
+      if (debugMode) {
+        setShowLogs(true);
+      }
     }
   };
 
   const processPDF = async (file) => {
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    logMessage('info', 'pdf-load', `Starting PDF processing for: ${file.name}`);
     
-    let allText = '';
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items.map(item => item.str).join(' ');
-      allText += pageText + '\n';
-    }
-
-    const transactions = extractTransactions(allText, file.name);
-    const processedData = categorizeTransactions(transactions);
-
-    // Update states
-    setRawTransactions(prev => [...prev, ...transactions]);
-    setIncomeEntries(prev => [...prev, ...processedData.income]);
-    setBusinessExpenses(prev => [...prev, ...processedData.business]);
-    setPersonalExpenses(prev => [...prev, ...processedData.personal]);
-    setHomeExpenses(prev => [...prev, ...processedData.home]);
-    setUncategorizedTransactions(prev => [...prev, ...processedData.uncategorized]);
-
-    setUploadedFiles(prev => [...prev, {
-      name: file.name,
-      pageCount: pdf.numPages,
-      transactionCount: transactions.length,
-      processedAt: new Date()
-    }]);
-  };
-
-  const extractTransactions = (text, sourceFile) => {
-    const transactions = [];
-    const lines = text.split('\n').filter(line => line.trim().length > 0);
-    
-    // Standard Bank pattern
-    const standardBankPattern = /(\d{2}\s+\w{3})\s+(.+?)\s+([\d\s,.+-]+)\s+([\d\s,.+-]+)/;
-    
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      const match = line.match(standardBankPattern);
+    try {
+      // Convert file to array buffer
+      logMessage('debug', 'pdf-load', 'Converting file to ArrayBuffer');
+      const arrayBuffer = await file.arrayBuffer();
+      logMessage('debug', 'pdf-load', `ArrayBuffer created, size: ${arrayBuffer.byteLength} bytes`);
       
-      if (match) {
-        const [, date, description, amount, balance] = match;
-        const numAmount = parseFloat(amount.replace(/[^\d.-]/g, ''));
+      // Load PDF document
+      logMessage('debug', 'pdf-load', 'Loading PDF document with PDF.js');
+      const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
+      const pdf = await loadingTask.promise;
+      
+      logMessage('info', 'pdf-load', `PDF loaded successfully`, {
+        numPages: pdf.numPages,
+        fileName: file.name
+      });
+      
+      // Extract text from all pages
+      let allText = '';
+      const pageTexts = [];
+      
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        logMessage('debug', 'text-extract', `Processing page ${pageNum}/${pdf.numPages}`);
         
-        if (!isNaN(numAmount) && Math.abs(numAmount) > 1) {
-          transactions.push({
-            id: Date.now() + Math.random(),
-            date: date.trim(),
-            originalDescription: description.trim(),
-            amount: numAmount,
-            balance: parseFloat(balance.replace(/[^\d.-]/g, '')) || 0,
-            type: numAmount > 0 ? 'credit' : 'debit',
-            sourceFile
+        try {
+          const page = await pdf.getPage(pageNum);
+          const textContent = await page.getTextContent();
+          
+          logMessage('debug', 'text-extract', `Page ${pageNum} text items found: ${textContent.items.length}`);
+          
+          // Extract text items
+          const pageText = textContent.items.map(item => item.str).join(' ');
+          pageTexts.push({
+            page: pageNum,
+            text: pageText,
+            itemCount: textContent.items.length,
+            rawItems: debugMode ? textContent.items.slice(0, 10) : null // First 10 items for debugging
+          });
+          
+          allText += pageText + '\n';
+          
+          logMessage('debug', 'text-extract', `Page ${pageNum} text length: ${pageText.length} characters`);
+          
+        } catch (pageError) {
+          logMessage('error', 'text-extract', `Error processing page ${pageNum}`, {
+            error: pageError.message,
+            stack: pageError.stack
           });
         }
       }
+      
+      logMessage('info', 'text-extract', `Text extraction completed`, {
+        totalPages: pdf.numPages,
+        totalTextLength: allText.length,
+        averageTextPerPage: Math.round(allText.length / pdf.numPages)
+      });
+      
+      // Store extracted text for debugging
+      setExtractedTexts(prev => [...prev, {
+        fileName: file.name,
+        pageCount: pdf.numPages,
+        totalTextLength: allText.length,
+        allText: allText,
+        pageTexts: pageTexts,
+        extractedAt: new Date()
+      }]);
+      
+      // Process transactions
+      logMessage('info', 'transaction-parse', 'Starting transaction extraction');
+      const transactions = extractTransactions(allText, file.name);
+      
+      logMessage('info', 'transaction-parse', `Transaction extraction completed`, {
+        transactionsFound: transactions.length,
+        fileName: file.name
+      });
+      
+      // Categorize transactions
+      logMessage('info', 'categorization', 'Starting transaction categorization');
+      const processedData = categorizeTransactions(transactions);
+      
+      logMessage('info', 'categorization', `Categorization completed`, {
+        income: processedData.income.length,
+        business: processedData.business.length,
+        personal: processedData.personal.length,
+        home: processedData.home.length,
+        uncategorized: processedData.uncategorized.length
+      });
+
+      // Update states
+      setRawTransactions(prev => [...prev, ...transactions]);
+      setIncomeEntries(prev => [...prev, ...processedData.income]);
+      setBusinessExpenses(prev => [...prev, ...processedData.business]);
+      setPersonalExpenses(prev => [...prev, ...processedData.personal]);
+      setHomeExpenses(prev => [...prev, ...processedData.home]);
+      setUncategorizedTransactions(prev => [...prev, ...processedData.uncategorized]);
+
+      setUploadedFiles(prev => [...prev, {
+        name: file.name,
+        pageCount: pdf.numPages,
+        transactionCount: transactions.length,
+        processedAt: new Date(),
+        textLength: allText.length
+      }]);
+      
+      logMessage('info', 'pdf-load', `PDF processing completed successfully for: ${file.name}`);
+      
+    } catch (error) {
+      logMessage('error', 'pdf-load', `Failed to process PDF: ${file.name}`, {
+        error: error.message,
+        stack: error.stack
+      });
+      throw error;
+    }
+  };
+
+  const extractTransactions = (text, sourceFile) => {
+    logMessage('info', 'transaction-parse', `Starting transaction extraction from ${sourceFile}`, {
+      textLength: text.length,
+      sourceFile
+    });
+
+    const transactions = [];
+    const lines = text.split('\n').filter(line => line.trim().length > 0);
+    
+    logMessage('debug', 'transaction-parse', `Text split into ${lines.length} lines`);
+    
+    // Multiple regex patterns for different bank formats
+    const patterns = {
+      standardBank: /(\d{2}\s+\w{3})\s+(.+?)\s+([\d\s,.+-]+)\s+([\d\s,.+-]+)/,
+      standardBankAlt: /(\d{2}\s+\w{3}\s+\d{4}|\d{2}\s+\w{3})\s+(.+?)\s+([+-]?\s*[\d\s,.]+)\s+([\d\s,.]+)/,
+      genericDate: /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{2}\s+\w{3})\s+(.+?)\s+([+-]?\s*[\d\s,.]+)/,
+      amountBalance: /(.+?)\s+([+-]?\s*R?\s*[\d\s,.]+)\s+(R?\s*[\d\s,.]+)$/
+    };
+    
+    let matchCounts = {};
+    Object.keys(patterns).forEach(key => matchCounts[key] = 0);
+    
+    // Sample first 20 lines for debugging
+    if (debugMode && lines.length > 0) {
+      logMessage('debug', 'transaction-parse', 'Sample lines for pattern matching', {
+        sampleLines: lines.slice(0, 20),
+        totalLines: lines.length
+      });
+    }
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      if (line.length < 10) continue; // Skip very short lines
+      
+      let matched = false;
+      let matchedPattern = '';
+      
+      // Try each pattern
+      for (const [patternName, pattern] of Object.entries(patterns)) {
+        const match = line.match(pattern);
+        
+        if (match) {
+          matched = true;
+          matchedPattern = patternName;
+          matchCounts[patternName]++;
+          
+          try {
+            // Extract components based on pattern
+            let date, description, amount, balance;
+            
+            if (patternName === 'amountBalance') {
+              [, description, amount, balance] = match;
+              date = 'Unknown';
+            } else {
+              [, date, description, amount, balance] = match;
+            }
+            
+            // Clean and parse amounts
+            const cleanAmount = amount.replace(/[^\d.-]/g, '');
+            const cleanBalance = balance ? balance.replace(/[^\d.-]/g, '') : '0';
+            
+            const numAmount = parseFloat(cleanAmount);
+            const numBalance = parseFloat(cleanBalance);
+            
+            if (!isNaN(numAmount) && Math.abs(numAmount) > 1) {
+              const transaction = {
+                id: Date.now() + Math.random(),
+                date: date.trim(),
+                originalDescription: description.trim(),
+                amount: numAmount,
+                balance: numBalance || 0,
+                type: numAmount > 0 ? 'credit' : 'debit',
+                sourceFile,
+                lineNumber: i + 1,
+                matchedPattern: patternName,
+                rawLine: line
+              };
+              
+              transactions.push(transaction);
+              
+              if (debugMode && transactions.length <= 10) {
+                logMessage('debug', 'transaction-parse', `Transaction extracted (${patternName})`, {
+                  transaction,
+                  originalLine: line
+                });
+              }
+            } else {
+              logMessage('debug', 'transaction-parse', `Invalid amount parsed: ${cleanAmount} from line: ${line.substring(0, 100)}`);
+            }
+            
+          } catch (parseError) {
+            logMessage('warn', 'transaction-parse', `Error parsing matched line`, {
+              line: line.substring(0, 100),
+              pattern: patternName,
+              error: parseError.message
+            });
+          }
+          
+          break; // Stop trying other patterns once we find a match
+        }
+      }
+      
+      if (!matched && debugMode && i < 50) {
+        // Log some unmatched lines for debugging
+        logMessage('debug', 'transaction-parse', `Line ${i + 1} did not match any pattern`, {
+          line: line.substring(0, 100),
+          lineLength: line.length
+        });
+      }
+    }
+    
+    logMessage('info', 'transaction-parse', `Transaction extraction completed`, {
+      totalLinesProcessed: lines.length,
+      transactionsExtracted: transactions.length,
+      patternMatches: matchCounts,
+      extractionRate: `${((transactions.length / lines.length) * 100).toFixed(1)}%`
+    });
+    
+    // Log sample transactions for review
+    if (transactions.length > 0) {
+      logMessage('info', 'transaction-parse', `Sample extracted transactions`, {
+        sampleTransactions: transactions.slice(0, 5).map(t => ({
+          date: t.date,
+          description: t.originalDescription.substring(0, 50),
+          amount: t.amount,
+          pattern: t.matchedPattern
+        }))
+      });
+    } else {
+      logMessage('warn', 'transaction-parse', `No transactions extracted from ${sourceFile}`, {
+        textSample: text.substring(0, 500),
+        linesSample: lines.slice(0, 10)
+      });
     }
     
     return transactions;
   };
 
   const categorizeTransactions = (transactions) => {
+    logMessage('info', 'categorization', `Starting categorization of ${transactions.length} transactions`);
+    
     const categorized = {
       income: [],
       business: [],
@@ -364,12 +630,30 @@ const SATaxCalculator = () => {
       uncategorized: []
     };
 
-    transactions.forEach(transaction => {
+    let categorizedCount = 0;
+    let excludedCount = 0;
+
+    transactions.forEach((transaction, index) => {
+      let wasProcessed = false;
+      
       // Skip excluded patterns first
-      if (categorizationRules.excludePatterns.some(pattern => 
-        pattern.test(transaction.originalDescription))) {
-        return; // Skip this transaction entirely
+      for (const pattern of categorizationRules.excludePatterns) {
+        if (pattern.test(transaction.originalDescription)) {
+          excludedCount++;
+          wasProcessed = true;
+          
+          if (debugMode && excludedCount <= 10) {
+            logMessage('debug', 'categorization', `Transaction excluded by pattern`, {
+              description: transaction.originalDescription,
+              pattern: pattern.toString(),
+              amount: transaction.amount
+            });
+          }
+          break;
+        }
       }
+      
+      if (wasProcessed) return;
 
       // Check for TAKEALOT special handling
       if (categorizationRules.takealotPattern.test(transaction.originalDescription)) {
@@ -378,6 +662,13 @@ const SATaxCalculator = () => {
           category: 'takealot-review',
           reason: 'TAKEALOT purchase requires manual invoice review to separate business vs personal items'
         });
+        
+        logMessage('debug', 'categorization', `TAKEALOT transaction flagged for review`, {
+          description: transaction.originalDescription,
+          amount: transaction.amount
+        });
+        
+        categorizedCount++;
         return;
       }
 
@@ -385,7 +676,7 @@ const SATaxCalculator = () => {
       for (const rule of categorizationRules.income) {
         if (rule.pattern.test(transaction.originalDescription) && transaction.amount > 0) {
           const sourceTransactions = [transaction];
-          categorized.income.push({
+          const incomeEntry = {
             id: Date.now() + Math.random(),
             description: rule.source,
             amount: Math.abs(transaction.amount),
@@ -395,16 +686,30 @@ const SATaxCalculator = () => {
             confidence: rule.confidence,
             sourceTransactions,
             notes: `Auto-detected from: ${transaction.originalDescription}`
+          };
+          
+          categorized.income.push(incomeEntry);
+          categorizedCount++;
+          wasProcessed = true;
+          
+          logMessage('debug', 'categorization', `Income categorized`, {
+            rule: rule.category,
+            confidence: rule.confidence,
+            amount: transaction.amount,
+            description: transaction.originalDescription.substring(0, 50)
           });
-          return;
+          
+          break;
         }
       }
+
+      if (wasProcessed) return;
 
       // Categorize business expenses
       for (const rule of categorizationRules.businessExpenses) {
         if (rule.pattern.test(transaction.originalDescription) && transaction.amount < 0) {
           const sourceTransactions = [transaction];
-          categorized.business.push({
+          const expenseEntry = {
             id: Date.now() + Math.random(),
             description: rule.description,
             amount: Math.abs(transaction.amount),
@@ -414,16 +719,30 @@ const SATaxCalculator = () => {
             confidence: rule.confidence,
             sourceTransactions,
             notes: `Auto-detected from: ${transaction.originalDescription}`
+          };
+          
+          categorized.business.push(expenseEntry);
+          categorizedCount++;
+          wasProcessed = true;
+          
+          logMessage('debug', 'categorization', `Business expense categorized`, {
+            rule: rule.category,
+            confidence: rule.confidence,
+            amount: transaction.amount,
+            description: transaction.originalDescription.substring(0, 50)
           });
-          return;
+          
+          break;
         }
       }
+
+      if (wasProcessed) return;
 
       // Categorize personal expenses
       for (const rule of categorizationRules.personalExpenses) {
         if (rule.pattern.test(transaction.originalDescription) && transaction.amount < 0) {
           const sourceTransactions = [transaction];
-          categorized.personal.push({
+          const expenseEntry = {
             id: Date.now() + Math.random(),
             description: rule.description,
             amount: Math.abs(transaction.amount),
@@ -435,16 +754,30 @@ const SATaxCalculator = () => {
             isExcluded: true,
             exclusionReason: 'Personal expense as per provisional tax requirements',
             notes: `Auto-detected from: ${transaction.originalDescription}`
+          };
+          
+          categorized.personal.push(expenseEntry);
+          categorizedCount++;
+          wasProcessed = true;
+          
+          logMessage('debug', 'categorization', `Personal expense categorized (excluded)`, {
+            rule: rule.category,
+            confidence: rule.confidence,
+            amount: transaction.amount,
+            description: transaction.originalDescription.substring(0, 50)
           });
-          return;
+          
+          break;
         }
       }
+
+      if (wasProcessed) return;
 
       // Categorize home expenses
       for (const rule of categorizationRules.homeExpenses) {
         if (rule.pattern.test(transaction.originalDescription)) {
           const sourceTransactions = [transaction];
-          categorized.home.push({
+          const expenseEntry = {
             id: Date.now() + Math.random(),
             description: rule.description,
             amount: Math.abs(transaction.amount),
@@ -454,22 +787,44 @@ const SATaxCalculator = () => {
             confidence: rule.confidence,
             sourceTransactions,
             notes: `Auto-detected from: ${transaction.originalDescription}`
+          };
+          
+          categorized.home.push(expenseEntry);
+          categorizedCount++;
+          wasProcessed = true;
+          
+          logMessage('debug', 'categorization', `Home expense categorized`, {
+            rule: rule.category,
+            confidence: rule.confidence,
+            amount: transaction.amount,
+            description: transaction.originalDescription.substring(0, 50)
           });
-          return;
+          
+          break;
         }
       }
 
-      // If not categorized, add to uncategorized (but only significant amounts)
-      if (Math.abs(transaction.amount) > 50) {
+      // If not categorized and significant amount, add to uncategorized
+      if (!wasProcessed && Math.abs(transaction.amount) > 50) {
         categorized.uncategorized.push({
           ...transaction,
           reason: 'Could not automatically categorize this transaction'
         });
+        
+        if (debugMode && categorized.uncategorized.length <= 10) {
+          logMessage('debug', 'categorization', `Transaction uncategorized`, {
+            description: transaction.originalDescription.substring(0, 50),
+            amount: transaction.amount,
+            reason: 'No matching categorization rule'
+          });
+        }
       }
     });
 
     // Calculate home office deductions
     if (categorized.home.length > 0) {
+      logMessage('info', 'categorization', 'Calculating home office deductions');
+      
       const mortgageInterest = categorized.home
         .filter(expense => expense.category === 'Mortgage' && expense.description.includes('Interest'))
         .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
@@ -489,6 +844,12 @@ const SATaxCalculator = () => {
           confidence: 1.0,
           notes: `${homeOfficePercentage}% of R${mortgageInterest.toFixed(2)} annual mortgage interest`
         });
+        
+        logMessage('info', 'categorization', 'Home office mortgage interest deduction calculated', {
+          annualMortgageInterest: mortgageInterest,
+          homeOfficePercentage: homeOfficePercentage,
+          monthlyDeduction: (mortgageInterest * homeOfficePercentage / 100) / 12
+        });
       }
 
       if (homeInsurance > 0) {
@@ -502,8 +863,28 @@ const SATaxCalculator = () => {
           confidence: 1.0,
           notes: `${homeOfficePercentage}% of R${homeInsurance.toFixed(2)} annual home insurance`
         });
+        
+        logMessage('info', 'categorization', 'Home office insurance deduction calculated', {
+          annualHomeInsurance: homeInsurance,
+          homeOfficePercentage: homeOfficePercentage,
+          monthlyDeduction: (homeInsurance * homeOfficePercentage / 100) / 12
+        });
       }
     }
+
+    const categorizationSummary = {
+      totalTransactions: transactions.length,
+      categorized: categorizedCount,
+      excluded: excludedCount,
+      uncategorized: categorized.uncategorized.length,
+      income: categorized.income.length,
+      business: categorized.business.length,
+      personal: categorized.personal.length,
+      home: categorized.home.length,
+      categorizationRate: `${((categorizedCount / transactions.length) * 100).toFixed(1)}%`
+    };
+
+    logMessage('info', 'categorization', 'Categorization completed', categorizationSummary);
 
     return categorized;
   };
@@ -676,45 +1057,7 @@ const SATaxCalculator = () => {
         expense.confidence || 'N/A',
         expense.isExcluded ? 'Yes - Personal' : 'No',
         expense.notes || ""
-      ]),
-      [],
-      ["SUMMARY"],
-      ["Total Annual Income", totalAnnualIncome],
-      ["Total Deductible Business Expenses", totalDeductibleExpenses],
-      ["Total Personal Expenses (Excluded)", totalPersonalExpenses],
-      ["Taxable Income", taxableIncome],
-      ["Tax Liability", taxCalculation.tax],
-      ["Monthly Tax Required", monthlyTaxRequired],
-      ["Effective Tax Rate", taxCalculation.effectiveRate.toFixed(2) + "%"],
-      ["Marginal Tax Rate", taxCalculation.marginalRate.toFixed(1) + "%"],
-      ["Home Office Percentage", homeOfficePercentage + "%"],
-      [],
-      ["EXCLUSIONS APPLIED FOR PROVISIONAL TAX PAYER"],
-      ["Inter-bank payments (ib payment)", "Excluded as internal transfers"],
-      ["Interest income", "Excluded as not business income"],
-      ["Finance charges & transaction fees", "Excluded as bank charges"],
-      ["Virgin gym membership", "Excluded as personal expense"],
-      ["Old Mutual unit trusts", "Excluded as investment, not retirement"],
-      ["Netflix/Apple/YouTube/SABC", "Excluded as personal entertainment"],
-      ["CARTRACK vehicle tracking", "Excluded as personal expense"],
-      ["Cash withdrawals", "Excluded as personal transactions"],
-      ["TAKEALOT purchases", "Require PDF invoice verification for business vs personal items"],
-      [],
-      ["PROVISIONAL TAX DEDUCTIBLE EXPENSES INCLUDED"],
-      ["Retirement Annuity (10X)", "Fully deductible - Section 11(k)"],
-      ["Medical Aid contributions", "Fully deductible - Section 11A"],
-      ["Tax advisory services", "Professional fees - Section 11(a)"],
-      ["Business software subscriptions", "Deductible business expense"],
-      ["Home office expenses", homeOfficePercentage + "% of mortgage interest & insurance"],
-      ["Business education (UCT)", "Training related to income generation"],
-      ["Printing & business supplies", "Directly related to business operations"],
-      ["Internet services", "Necessary for business operations"],
-      [],
-      ["DATA SOURCES"],
-      ["Uploaded PDF Files", uploadedFiles.length],
-      ["Auto-detected Transactions", rawTransactions.filter(t => t.confidence > 0.7).length],
-      ["Manual Entries", incomeEntries.filter(e => e.dataSource === 'manual').length + businessExpenses.filter(e => e.dataSource === 'manual').length],
-      ["Uncategorized Items", uncategorizedTransactions.length]
+      ])
     ].map(row => row.join(",")).join("\n");
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -743,6 +1086,7 @@ const SATaxCalculator = () => {
       setUploadedFiles([]);
       setUncategorizedTransactions([]);
       setEditingEntry(null);
+      clearLogs();
     }
   };
 
@@ -796,6 +1140,12 @@ const SATaxCalculator = () => {
               <Calculator className="mr-1" size={16} />
               Provisional Tax Optimized
             </span>
+            {debugMode && (
+              <span className="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
+                <AlertCircle className="mr-1" size={16} />
+                Debug Mode Active
+              </span>
+            )}
           </div>
         </div>
 
@@ -807,6 +1157,46 @@ const SATaxCalculator = () => {
               Controls & Settings
             </h2>
             <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setDebugMode(!debugMode)}
+                className={`flex items-center px-3 py-2 rounded-lg font-medium ${
+                  debugMode ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'
+                }`}
+              >
+                <AlertCircle className="mr-1" size={16} />
+                Debug {debugMode ? 'ON' : 'OFF'}
+              </button>
+              
+              {processingLogs.length > 0 && (
+                <>
+                  <button
+                    onClick={() => setShowLogs(!showLogs)}
+                    className={`flex items-center px-3 py-2 rounded-lg font-medium ${
+                      showLogs ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                    }`}
+                  >
+                    <FileText className="mr-1" size={16} />
+                    Logs ({processingLogs.length})
+                  </button>
+                  
+                  <button
+                    onClick={downloadLogs}
+                    className="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                  >
+                    <Download className="mr-1" size={16} />
+                    Export Logs
+                  </button>
+                  
+                  <button
+                    onClick={clearLogs}
+                    className="flex items-center px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                  >
+                    <Trash className="mr-1" size={16} />
+                    Clear Logs
+                  </button>
+                </>
+              )}
+              
               <button
                 onClick={() => setEditMode(!editMode)}
                 className={`flex items-center px-3 py-2 rounded-lg font-medium ${
@@ -922,6 +1312,160 @@ const SATaxCalculator = () => {
           )}
         </div>
 
+        {/* Comprehensive Logging Viewer */}
+        {showLogs && processingLogs.length > 0 && (
+          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-purple-700">
+                🔍 Processing Logs & Debug Information
+              </h3>
+              <div className="flex space-x-2 text-sm">
+                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                  {processingLogs.filter(log => log.level === 'info').length} Info
+                </span>
+                <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
+                  {processingLogs.filter(log => log.level === 'warn').length} Warnings
+                </span>
+                <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
+                  {processingLogs.filter(log => log.level === 'error').length} Errors
+                </span>
+                <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded">
+                  {processingLogs.filter(log => log.level === 'debug').length} Debug
+                </span>
+              </div>
+            </div>
+            
+            {/* Log Categories */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* Processing Summary */}
+              <div className="bg-gray-50 rounded-lg p-4">
+                <h4 className="font-semibold mb-3 text-gray-800">Processing Summary</h4>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Files Processed:</span>
+                    <span className="font-medium">{uploadedFiles.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Text Extracted:</span>
+                    <span className="font-medium">
+                      {extractedTexts.reduce((sum, file) => sum + file.totalTextLength, 0).toLocaleString()} chars
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Transactions Found:</span>
+                    <span className="font-medium">{rawTransactions.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Income Items:</span>
+                    <span className="font-medium text-green-600">{incomeEntries.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Business Expenses:</span>
+                    <span className="font-medium text-blue-600">{businessExpenses.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Personal Expenses:</span>
+                    <span className="font-medium text-gray-600">{personalExpenses.length}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Uncategorized:</span>
+                    <span className="font-medium text-orange-600">{uncategorizedTransactions.length}</span>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Extracted Text Preview */}
+              {extractedTexts.length > 0 && (
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="font-semibold mb-3 text-gray-800">Extracted Text Preview</h4>
+                  <div className="space-y-3">
+                    {extractedTexts.slice(0, 2).map((file, index) => (
+                      <div key={index} className="bg-white rounded p-3 border">
+                        <div className="font-medium text-sm mb-2">{file.fileName}</div>
+                        <div className="text-xs text-gray-600 mb-2">
+                          {file.pageCount} pages • {file.totalTextLength.toLocaleString()} characters
+                        </div>
+                        <div className="text-xs bg-gray-100 p-2 rounded max-h-32 overflow-y-auto font-mono">
+                          {file.allText.substring(0, 500)}...
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Detailed Logs */}
+            <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+              <div className="bg-gray-800 text-white p-3 font-mono text-sm">
+                <div className="font-semibold mb-2">📋 Detailed Processing Logs</div>
+                {processingLogs.map((log) => (
+                  <div key={log.id} className={`mb-2 p-2 rounded ${
+                    log.level === 'error' ? 'bg-red-900' :
+                    log.level === 'warn' ? 'bg-orange-900' :
+                    log.level === 'info' ? 'bg-blue-900' :
+                    'bg-gray-700'
+                  }`}>
+                    <div className="flex items-start space-x-2">
+                      <span className="text-gray-300 text-xs">
+                        {new Date(log.timestamp).toLocaleTimeString()}
+                      </span>
+                      <span className={`text-xs px-1 rounded ${
+                        log.level === 'error' ? 'bg-red-600' :
+                        log.level === 'warn' ? 'bg-orange-600' :
+                        log.level === 'info' ? 'bg-blue-600' :
+                        'bg-gray-600'
+                      }`}>
+                        {log.level.toUpperCase()}
+                      </span>
+                      <span className="text-xs text-purple-300">[{log.category}]</span>
+                    </div>
+                    <div className="mt-1 text-white">{log.message}</div>
+                    {log.data && (
+                      <details className="mt-2">
+                        <summary className="text-gray-300 text-xs cursor-pointer hover:text-white">
+                          📊 View Data
+                        </summary>
+                        <pre className="mt-1 text-xs bg-gray-900 p-2 rounded overflow-x-auto text-gray-300">
+                          {JSON.stringify(log.data, null, 2)}
+                        </pre>
+                      </details>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+            
+            {/* Quick Actions */}
+            <div className="mt-4 flex space-x-2">
+              <button
+                onClick={() => logMessage('info', 'manual', 'Manual test log entry')}
+                className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
+              >
+                Test Log
+              </button>
+              <button
+                onClick={() => {
+                  const errors = processingLogs.filter(log => log.level === 'error');
+                  console.log('Error logs:', errors);
+                }}
+                className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
+              >
+                Console Errors
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(JSON.stringify(processingLogs, null, 2));
+                  alert('Logs copied to clipboard');
+                }}
+                className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+              >
+                Copy to Clipboard
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* File Processing Status */}
         {uploadedFiles.length > 0 && (
           <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
@@ -935,6 +1479,11 @@ const SATaxCalculator = () => {
                   <div className="text-xs text-gray-600 mt-1">
                     {file.transactionCount} transactions • {file.pageCount} pages
                   </div>
+                  {file.textLength && (
+                    <div className="text-xs text-gray-500">
+                      {file.textLength.toLocaleString()} characters extracted
+                    </div>
+                  )}
                   <div className="text-xs text-gray-500">
                     {file.processedAt.toLocaleString()}
                   </div>
@@ -1216,418 +1765,46 @@ const SATaxCalculator = () => {
           </div>
         </div>
 
-        {/* Business Expenses Section */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-blue-700">Deductible Business Expenses</h3>
-            <div className="flex space-x-2">
-              {editMode && (
-                <button
-                  onClick={() => addExpenseEntry('business')}
-                  className="flex items-center px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                >
-                  <Plus className="mr-1" size={16} />
-                  Add Expense
-                </button>
-              )}
-              <span className="text-sm text-gray-600">
-                {businessExpenses.filter(e => !e.isExcluded).length} items • {formatCurrency(totalDeductibleExpenses)} deductible
-              </span>
-            </div>
-          </div>
-          
-          <div className="space-y-3">
-            {businessExpenses.map((expense) => (
-              <div key={expense.id} className={`p-4 rounded-lg border-l-4 ${expense.isExcluded ? 'bg-red-50 border-red-400' : 'bg-gray-50 border-blue-500'}`}>
-                {editMode && editingEntry?.type === 'expense' && editingEntry?.id === expense.id ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        value={expense.description}
-                        onChange={(e) => updateExpenseEntry(expense.id, 'description', e.target.value)}
-                        className="p-2 border border-gray-300 rounded"
-                        placeholder="Description"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={expense.amount}
-                        onChange={(e) => updateExpenseEntry(expense.id, 'amount', e.target.value)}
-                        className="p-2 border border-gray-300 rounded"
-                        placeholder="Amount"
-                      />
-                      <select
-                        value={expense.category}
-                        onChange={(e) => updateExpenseEntry(expense.id, 'category', e.target.value)}
-                        className="p-2 border border-gray-300 rounded"
-                      >
-                        {expenseCategories.map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <input
-                      type="text"
-                      value={expense.notes || ''}
-                      onChange={(e) => updateExpenseEntry(expense.id, 'notes', e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded"
-                      placeholder="Notes"
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setEditingEntry(null)}
-                        className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                      >
-                        Save
-                      </button>
-                      {!expense.isExcluded && (
-                        <button
-                          onClick={() => moveExpenseToPersonal(expense)}
-                          className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
-                        >
-                          → Personal
-                        </button>
-                      )}
-                      <button
-                        onClick={() => deleteExpenseEntry(expense.id)}
-                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      {getDataSourceBadge(expense.dataSource, expense.confidence, expense.isExcluded)}
-                      <span className={`font-medium text-lg ${expense.isExcluded ? 'text-gray-400 line-through' : 'text-blue-700'}`}>
-                        {expense.description}
-                      </span>
-                      {expense.isExcluded && (
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
-                          NOT DEDUCTIBLE
-                        </span>
-                      )}
-                      {editMode && (
-                        <div className="flex space-x-1">
-                          <button
-                            onClick={() => setEditingEntry({ type: 'expense', id: expense.id })}
-                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          {!expense.isExcluded && (
-                            <button
-                              onClick={() => moveExpenseToPersonal(expense)}
-                              className="px-2 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                            >
-                              → Personal
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-xl font-bold ${expense.isExcluded ? 'text-gray-400 line-through' : 'text-blue-600'}`}>
-                        {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-                      </div>
-                      <div className="text-sm text-gray-600">{expense.category}</div>
-                      {expense.isExcluded && (
-                        <div className="text-xs text-red-600 font-medium">Excluded from Tax Calc</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {expense.notes && !editMode && (
-                  <div className="mt-2 text-sm text-gray-600">💡 {expense.notes}</div>
-                )}
-                
-                {expense.exclusionReason && (
-                  <div className="mt-2 text-sm text-red-600 bg-red-100 p-2 rounded">
-                    <strong>Exclusion Reason:</strong> {expense.exclusionReason}
-                  </div>
-                )}
-                
-                {showTransactionDetails && expense.sourceTransactions && (
-                  <div className="mt-3 p-3 bg-white rounded border">
-                    <div className="text-xs font-medium text-gray-600 mb-2">Source Transactions:</div>
-                    {expense.sourceTransactions.slice(0, 5).map((transaction, idx) => (
-                      <div key={idx} className="text-xs text-gray-500 flex justify-between mb-1">
-                        <span>{transaction.date}: {transaction.originalDescription}</span>
-                        <span>{formatCurrency(transaction.amount)}</span>
-                      </div>
-                    ))}
-                    {expense.sourceTransactions.length > 5 && (
-                      <div className="text-xs text-gray-400">
-                        ... and {expense.sourceTransactions.length - 5} more transactions
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Personal Expenses Section */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-700">Personal Expenses (Excluded from Business Deductions)</h3>
-            <div className="flex space-x-2">
-              {editMode && (
-                <button
-                  onClick={() => addExpenseEntry('personal')}
-                  className="flex items-center px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-                >
-                  <Plus className="mr-1" size={16} />
-                  Add Personal
-                </button>
-              )}
-              <span className="text-sm text-gray-600">
-                {personalExpenses.length} items • {formatCurrency(totalPersonalExpenses)} total (NOT deductible)
-              </span>
-            </div>
-          </div>
-          
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
-            <div className="flex items-start space-x-3">
-              <X className="text-red-600 mt-1" size={20} />
-              <div>
-                <h4 className="font-semibold text-red-800 mb-1">Excluded from Business Deductions</h4>
-                <p className="text-red-700 text-sm">
-                  These expenses are NOT included in your business deductions as per provisional tax requirements: Personal expenses (Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK), inter-bank payments, interest income, and bank charges.
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="space-y-3">
-            {personalExpenses.map((expense) => (
-              <div key={expense.id} className={`p-4 rounded-lg border-l-4 ${
-                expense.isExcluded ? 'bg-red-50 border-red-400' : 'bg-gray-50 border-gray-400'
-              }`}>
-                {editMode && editingEntry?.type === 'personal' && editingEntry?.id === expense.id ? (
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <input
-                        type="text"
-                        value={expense.description}
-                        onChange={(e) => updatePersonalExpense(expense.id, 'description', e.target.value)}
-                        className="p-2 border border-gray-300 rounded"
-                        placeholder="Description"
-                      />
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={expense.amount}
-                        onChange={(e) => updatePersonalExpense(expense.id, 'amount', e.target.value)}
-                        className="p-2 border border-gray-300 rounded"
-                        placeholder="Amount"
-                      />
-                      <select
-                        value={expense.category}
-                        onChange={(e) => updatePersonalExpense(expense.id, 'category', e.target.value)}
-                        className="p-2 border border-gray-300 rounded"
-                      >
-                        <option value="Personal">Personal</option>
-                        <option value="Entertainment">Entertainment</option>
-                        <option value="Health">Health</option>
-                        <option value="Transport">Transport</option>
-                        <option value="Investment">Investment</option>
-                      </select>
-                    </div>
-                    <input
-                      type="text"
-                      value={expense.notes || ''}
-                      onChange={(e) => updatePersonalExpense(expense.id, 'notes', e.target.value)}
-                      className="w-full p-2 border border-gray-300 rounded"
-                      placeholder="Notes"
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => setEditingEntry(null)}
-                        className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
-                      >
-                        Save
-                      </button>
-                      {!expense.isExcluded && (
-                        <button
-                          onClick={() => moveExpenseToBusiness(expense)}
-                          className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
-                        >
-                          → Business
-                        </button>
-                      )}
-                      <button
-                        onClick={() => deletePersonalExpense(expense.id)}
-                        className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      {getDataSourceBadge(expense.dataSource, expense.confidence, expense.isExcluded)}
-                      <span className={`font-medium text-lg ${expense.isExcluded ? 'text-red-700' : 'text-gray-700'}`}>
-                        {expense.description}
-                      </span>
-                      {expense.isExcluded && (
-                        <span className="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
-                          EXCLUDED
-                        </span>
-                      )}
-                      {editMode && (
-                        <div className="flex space-x-1">
-                          <button
-                            onClick={() => setEditingEntry({ type: 'personal', id: expense.id })}
-                            className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          {!expense.isExcluded && (
-                            <button
-                              onClick={() => moveExpenseToBusiness(expense)}
-                              className="px-2 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
-                            >
-                              → Business
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                    <div className="text-right">
-                      <div className={`text-xl font-bold ${expense.isExcluded ? 'text-red-600' : 'text-gray-600'}`}>
-                        {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
-                      </div>
-                      <div className="text-sm text-gray-500">{expense.category}</div>
-                      {expense.isExcluded && (
-                        <div className="text-xs text-red-600 font-medium">Not Deductible</div>
-                      )}
-                    </div>
-                  </div>
-                )}
-                
-                {expense.notes && !editMode && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    💡 {expense.notes}
-                  </div>
-                )}
-                
-                {expense.exclusionReason && (
-                  <div className="mt-2 text-sm text-red-600 bg-red-100 p-2 rounded">
-                    <strong>Exclusion Reason:</strong> {expense.exclusionReason}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Tax Calculation */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <h3 className="text-lg font-semibold mb-4 text-purple-700">
-            📊 Tax Calculation - {selectedTaxYear} Tax Year
-          </h3>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-3">
-              <div className="flex justify-between">
-                <span>Total Annual Income:</span>
-                <span className="font-semibold">{formatCurrency(totalAnnualIncome)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Less: Deductible Business Expenses:</span>
-                <span className="font-semibold text-blue-600">({formatCurrency(totalDeductibleExpenses)})</span>
-              </div>
-              <div className="flex justify-between border-t pt-2">
-                <span>Taxable Income:</span>
-                <span className="font-semibold">{formatCurrency(taxableIncome)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Gross Tax:</span>
-                <span className="font-semibold">{formatCurrency(taxCalculation.grossTax)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Less: Tax Rebates ({userAge}):</span>
-                <span className="font-semibold text-green-600">({formatCurrency(taxCalculation.rebates)})</span>
-              </div>
-              <div className="flex justify-between border-t-2 pt-2 text-lg font-bold">
-                <span>Net Tax Liability:</span>
-                <span className="text-red-600">{formatCurrency(taxCalculation.tax)}</span>
-              </div>
-              
-              {/* Show excluded personal expenses */}
-              <div className="mt-4 p-3 bg-red-50 rounded-lg border border-red-200">
-                <div className="text-sm font-medium text-red-800 mb-1">Personal Expenses (Excluded):</div>
-                <div className="text-sm text-red-700">
-                  {formatCurrency(totalPersonalExpenses)} in personal expenses were excluded from business deductions
-                </div>
-                <div className="text-xs text-red-600 mt-1">
-                  Includes: Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h4 className="font-semibold mb-3">Tax Information & Compliance</h4>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span>Effective Tax Rate:</span>
-                  <span className="font-medium">{taxCalculation.effectiveRate.toFixed(2)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Marginal Tax Rate:</span>
-                  <span className="font-medium">{taxCalculation.marginalRate.toFixed(1)}%</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Monthly Tax Required:</span>
-                  <span className="font-medium text-red-600">{formatCurrency(monthlyTaxRequired)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Monthly After-Tax Income:</span>
-                  <span className="font-medium text-green-600">{formatCurrency((totalAnnualIncome - taxCalculation.tax) / 12)}</span>
-                </div>
-                <div className="border-t pt-2 mt-2">
-                  <div className="text-xs text-gray-600 mb-1">Home Office Deduction:</div>
-                  <div className="text-xs">{homeOfficePercentage}% of mortgage interest & home insurance</div>
-                </div>
-                <div className="border-t pt-2 mt-2">
-                  <div className="text-xs text-gray-600">Provisional Tax Payments:</div>
-                  <div className="text-xs">1st: 31 Aug {selectedTaxYear} • 2nd: 28 Feb {selectedTaxYear + 1}</div>
-                </div>
-                {uncategorizedTransactions.length > 0 && (
-                  <div className="border-t pt-2 mt-2">
-                    <div className="text-xs text-orange-600 font-medium">⚠️ {uncategorizedTransactions.length} items need review</div>
-                    <div className="text-xs text-orange-700">Review TAKEALOT invoices for business vs personal items</div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Empty State */}
         {incomeEntries.length === 0 && businessExpenses.length === 0 && personalExpenses.length === 0 && uploadedFiles.length === 0 && (
           <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="flex items-center justify-center mb-6">
-              <FileUp className="mr-3 text-blue-600" size={64} />
+            <div className="flex items-center justify-center mb-6 space-x-4">
+              <FileUp className="text-blue-600" size={64} />
               <div className={`px-3 py-1 rounded-full text-sm ${
                 pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
               }`}>
                 PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
               </div>
+              {debugMode && (
+                <div className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
+                  Debug Mode Active
+                </div>
+              )}
             </div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">SA Provisional Tax Calculator with Smart Categorization</h3>
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">SA Provisional Tax Calculator with Smart Categorization & Debugging</h3>
             <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
               Upload your bank statement PDFs for intelligent transaction categorization optimized for provisional tax payers. 
               Automatically identifies Precise Digitait income, excludes inter-bank payments, interest income, and bank charges.
               Personal expenses (Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK) are automatically excluded.
               TAKEALOT purchases require manual PDF invoice review to separate business items from personal.
             </p>
+            
+            {debugMode && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="text-orange-600 mt-1" size={20} />
+                  <div className="text-left">
+                    <h4 className="font-semibold text-orange-800 mb-1">🔍 Debug Mode Active</h4>
+                    <p className="text-orange-700 text-sm">
+                      Comprehensive logging is enabled. All PDF processing steps will be tracked including:
+                      text extraction, regex pattern matching, transaction parsing, and categorization decisions.
+                      Use this mode to troubleshoot PDF parsing issues.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <label className={`inline-flex items-center px-6 py-3 ${
               pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
             } text-white rounded-lg cursor-pointer text-lg`}>
@@ -1642,10 +1819,23 @@ const SATaxCalculator = () => {
                 disabled={isProcessing || !pdfJsLoaded}
               />
             </label>
-            <p className="text-sm text-gray-500 mt-4">
-              Optimized for provisional tax payers • Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
-              Automatically applies {homeOfficePercentage}% home office deduction • Excludes non-deductible personal expenses
-            </p>
+            
+            <div className="mt-6 space-y-2">
+              <p className="text-sm text-gray-500">
+                Optimized for provisional tax payers • Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
+                Automatically applies {homeOfficePercentage}% home office deduction • Excludes non-deductible personal expenses
+              </p>
+              
+              {!debugMode && (
+                <p className="text-xs text-gray-400">
+                  💡 Enable Debug Mode above if you're experiencing PDF parsing issues
+                </p>
+              )}
+              
+              <p className="text-xs text-gray-400">
+                🔧 Debug features: comprehensive logging, text extraction preview, pattern matching analysis, categorization tracking
+              </p>
+            </div>
           </div>
         )}
 
@@ -1653,6 +1843,9 @@ const SATaxCalculator = () => {
         <div className="text-center text-gray-600 text-sm">
           <p>⚖️ Please consult with a qualified tax practitioner for official tax filing and advice</p>
           <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
+          {debugMode && (
+            <p className="mt-1 text-orange-600 font-medium">🔍 Debug Mode: Comprehensive logging active</p>
+          )}
         </div>
       </div>
     </div>
