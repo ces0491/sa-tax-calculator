@@ -157,105 +157,123 @@ const SATaxCalculator = () => {
   const categorizationRules = {
     income: [
       // Primary income source - Precise Digitait (NZ company payments)
-      { pattern: /PRECISE DIGIT.*teletransmission inward/i, category: "Freelance", source: "NZ Company Income (Precise Digitait)", confidence: 0.98 },
-      { pattern: /teletransmission inward/i, category: "Freelance", source: "International Business Income", confidence: 0.9 },
+      { pattern: /PRECISE DIGIT.*teletransmission.*inward/i, category: "Freelance", source: "NZ Company Income (Precise Digitait)", confidence: 0.98 },
+      { pattern: /teletransmission.*inward/i, category: "Freelance", source: "International Business Income", confidence: 0.9 },
       
       // Other legitimate business income
-      { pattern: /CASHFOCUS SALARY/i, category: "Employment", source: "Employment Income", confidence: 0.9 },
+      { pattern: /CASHFOCUS SALARY.*credit transfer/i, category: "Employment", source: "Employment Income", confidence: 0.9 },
+      { pattern: /ADEYIGA.*ib payment/i, category: "Freelance", source: "Client Payment", confidence: 0.85 },
     ],
     
     businessExpenses: [
       // Retirement contributions (RA) - highly deductible for provisional tax payers
-      { pattern: /10XRA COL.*service agreement|10X RETIREMENT ANN/i, category: "Retirement", description: "Retirement Annuity Contribution", confidence: 0.98 },
+      { pattern: /10XRA COL.*service agreement|10X RETIREMENT ANN.*ib payment/i, category: "Retirement", description: "Retirement Annuity Contribution", confidence: 0.98 },
       
       // Medical aid contributions - fully deductible
-      { pattern: /DISC PREM.*medical aid/i, category: "Medical", description: "Medical Aid Contribution", confidence: 0.98 },
-      { pattern: /iK \*Dr Malcol|Dr\s+Malcol/i, category: "Medical", description: "Medical Professional Fees", confidence: 0.9 },
+      { pattern: /DISC PREM.*medical aid.*contribution/i, category: "Medical", description: "Medical Aid Contribution", confidence: 0.98 },
+      { pattern: /iK \*Dr Malcol.*cheque card purchase/i, category: "Medical", description: "Medical Professional Fees", confidence: 0.9 },
       
       // Professional services - tax, legal, accounting
-      { pattern: /PERSONAL TAX SERVICE|TAX.*ADVISOR|PROVTAX/i, category: "Professional", description: "Tax Advisory Services", confidence: 0.95 },
-      { pattern: /fee.*teletransmission.*inward|teletransmission.*fee/i, category: "Professional", description: "International Transfer Fees (Business)", confidence: 0.9 },
+      { pattern: /PERSONAL TAX SERVICE.*PROVTAX.*ib payment/i, category: "Professional", description: "Tax Advisory Services", confidence: 0.95 },
+      { pattern: /fee.*teletransmission.*inward/i, category: "Professional", description: "International Transfer Fees (Business)", confidence: 0.9 },
       
       // Business education and training
-      { pattern: /PAYU \* UC|I PAYU \* UC/i, category: "Education", description: "University of Cape Town (Business Education)", confidence: 0.9 },
+      { pattern: /I PAYU \* UC.*cheque card purchase/i, category: "Education", description: "University of Cape Town (Business Education)", confidence: 0.9 },
       
       // Business software and subscriptions
-      { pattern: /Google GSUITE|GOOGLE\*GSUITE/i, category: "Software", description: "Google Workspace (Business)", confidence: 0.95 },
-      { pattern: /MSFT \*|Microsoft/i, category: "Software", description: "Microsoft Office 365 (Business)", confidence: 0.9 },
-      { pattern: /CLAUDE\.AI SUBSCRIPTION/i, category: "Software", description: "Claude AI (Business Tool)", confidence: 0.9 },
-      { pattern: /SHEET SOLVED/i, category: "Software", description: "Business Software/Tools", confidence: 0.85 },
+      { pattern: /Google GSUITE.*sheetsol|GOOGLE\*GSUITE.*SHEETSOL/i, category: "Software", description: "Google Workspace (Business)", confidence: 0.95 },
+      { pattern: /MSFT \*.*cheque card purchase/i, category: "Software", description: "Microsoft Office 365 (Business)", confidence: 0.9 },
+      { pattern: /CLAUDE\.AI SUBSCRIPTION.*cheque card purchase/i, category: "Software", description: "Claude AI (Business Tool)", confidence: 0.9 },
+      { pattern: /SHEET SOLVED.*ib payment/i, category: "Software", description: "Business Software/Tools", confidence: 0.85 },
       
       // Business communications and internet
-      { pattern: /AFRIHOST|INTERNET.*SERVICE/i, category: "Office", description: "Internet Services (Business)", confidence: 0.85 },
+      { pattern: /AFRIHOST.*debit transfer/i, category: "Office", description: "Internet Services (Business)", confidence: 0.85 },
       
       // Business meals and entertainment (limited deduction)
-      { pattern: /BOOTLEGGER|SHIFT.*ESPRESS/i, category: "Business", description: "Business Coffee/Meals", confidence: 0.85 },
+      { pattern: /BOOTLEGGER.*cheque card.*purchase|SHIFT.*ESPRESS.*cheque card purchase/i, category: "Business", description: "Business Coffee/Meals", confidence: 0.85 },
       
       // Business printing and stationery
-      { pattern: /ROZPRINT/i, category: "Office", description: "Printing Services", confidence: 0.95 },
+      { pattern: /ROZPRINT.*cheque card purchase/i, category: "Office", description: "Printing Services", confidence: 0.95 },
       
       // Property maintenance (business portion)
-      { pattern: /POINT GARDEN SERVICE|GARDEN.*SERVICE/i, category: "Office", description: "Property Maintenance (Business Portion)", confidence: 0.8 },
+      { pattern: /POINT GARDEN SERVICE.*GARDEN.*ib payment/i, category: "Office", description: "Property Maintenance (Business Portion)", confidence: 0.8 },
       
       // Business insurance
       { pattern: /DISCINSURE.*insurance.*premium/i, category: "Insurance", description: "Business Insurance", confidence: 0.8 },
+      
+      // Business fuel
+      { pattern: /C\*BP PINELAND.*cheque card purchase/i, category: "Travel", description: "Business Fuel", confidence: 0.7 },
     ],
     
     personalExpenses: [
       // Explicitly excluded personal expenses as per requirements
-      { pattern: /VIRGIN ACT.*NETCASH|GYM.*MEMBERSHIP/i, category: "Personal", description: "Gym Membership (EXCLUDED)", confidence: 0.95 },
-      { pattern: /OM UNITTRU.*unit trust|OLD MUTUAL.*INVESTMENT/i, category: "Investment", description: "Unit Trust Investment (EXCLUDED)", confidence: 0.95 },
-      { pattern: /Netflix|NETFLIX/i, category: "Entertainment", description: "Netflix Subscription (EXCLUDED)", confidence: 0.98 },
-      { pattern: /APPLE\.COM|APPLE.*SERVICES/i, category: "Entertainment", description: "Apple Services (EXCLUDED)", confidence: 0.95 },
-      { pattern: /YouTube|YOUTUBE|Google YouTube/i, category: "Entertainment", description: "YouTube Premium (EXCLUDED)", confidence: 0.95 },
-      { pattern: /SABC.*TV.*LICE|U\*SABC TV/i, category: "Entertainment", description: "SABC TV License (EXCLUDED)", confidence: 0.95 },
-      { pattern: /CARTRACK/i, category: "Personal", description: "Vehicle Tracking (EXCLUDED)", confidence: 0.95 },
+      { pattern: /VIRGIN ACT.*NETCASH.*service agreement/i, category: "Personal", description: "Gym Membership (EXCLUDED)", confidence: 0.95 },
+      { pattern: /OM UNITTRU.*unit trust purchase/i, category: "Investment", description: "Unit Trust Investment (EXCLUDED)", confidence: 0.95 },
+      { pattern: /Netflix\.com|NETFLIX\.COM/i, category: "Entertainment", description: "Netflix Subscription (EXCLUDED)", confidence: 0.98 },
+      { pattern: /APPLE\.COM\/BILL.*ITUNE/i, category: "Entertainment", description: "Apple Services (EXCLUDED)", confidence: 0.95 },
+      { pattern: /Google YouTube.*cheque card purchase|GOOGLE \*YouTube/i, category: "Entertainment", description: "YouTube Premium (EXCLUDED)", confidence: 0.95 },
+      { pattern: /U\*SABC TV.*cheque card purchase/i, category: "Entertainment", description: "SABC TV License (EXCLUDED)", confidence: 0.95 },
+      { pattern: /CARTRACK.*debit transfer/i, category: "Personal", description: "Vehicle Tracking (EXCLUDED)", confidence: 0.95 },
       
       // Personal mobile and communications
-      { pattern: /MTN PREPAID|MTN SP.*debicheck|CELL.*PHONE|MOBILE/i, category: "Personal", description: "Mobile Phone (Personal)", confidence: 0.8 },
+      { pattern: /MTN PREPAID.*pre.paid payment|MTN SP.*debicheck debit order/i, category: "Personal", description: "Mobile Phone (Personal)", confidence: 0.8 },
       
       // Personal shopping and groceries
-      { pattern: /WOOLWORTHS.*(?!.*BB5065|.*office|.*business)/i, category: "Personal", description: "Personal Shopping", confidence: 0.7 },
-      { pattern: /PnP|Pick n Pay|CHECKERS|SPAR/i, category: "Personal", description: "Groceries", confidence: 0.8 },
+      { pattern: /WOOLWORTHS.*cheque card purchase/i, category: "Personal", description: "Personal Shopping", confidence: 0.7 },
+      { pattern: /PnP.*cheque card purchase|Checkers.*cheque card purchase|Tops.*cheque card purchase/i, category: "Personal", description: "Groceries", confidence: 0.8 },
+      { pattern: /MCD.*cheque card purchase/i, category: "Personal", description: "Fast Food (Personal)", confidence: 0.8 },
       
-      // Personal fuel and transport
-      { pattern: /ENGEN|BP.*(?!.*business)|SHELL|CALTEX/i, category: "Personal", description: "Personal Fuel", confidence: 0.7 },
+      // Personal shopping centers
+      { pattern: /Howard Centre.*cheque card purchase|Willowbridge.*cheque card purchase/i, category: "Personal", description: "Shopping Centers (Personal)", confidence: 0.7 },
+      
+      // Personal entertainment
+      { pattern: /VAN HUNKS.*cheque card purchase|C\*HUDSONS.*cheque card purchase/i, category: "Personal", description: "Entertainment (Personal)", confidence: 0.8 },
+      { pattern: /Asara Wines.*cheque card purchase/i, category: "Personal", description: "Personal Alcohol", confidence: 0.8 },
     ],
 
     homeExpenses: [
-      { pattern: /SBSA HOMEL.*bond repayment|HOME.*LOAN|MORTGAGE/i, category: "Mortgage", description: "Home Loan Payment", confidence: 0.98 },
-      { pattern: /SYSTEM INTEREST DEBIT.*ID|MORTGAGE.*INTEREST/i, category: "Mortgage", description: "Mortgage Interest", confidence: 0.98 },
-      { pattern: /INSURANCE PREMIUM.*IP|HOME.*INSURANCE/i, category: "Insurance", description: "Home Insurance", confidence: 0.9 },
-      { pattern: /MUNICIPAL.*RATES|CITY.*RATES/i, category: "Utilities", description: "Municipal Rates", confidence: 0.9 },
-      { pattern: /ELECTRICITY|ESKOM/i, category: "Utilities", description: "Electricity", confidence: 0.9 }
+      { pattern: /SBSA HOMEL.*std bank bond repayment/i, category: "Mortgage", description: "Home Loan Payment", confidence: 0.98 },
+      { pattern: /SYSTEM INTEREST DEBIT.*ID/i, category: "Mortgage", description: "Mortgage Interest", confidence: 0.98 },
+      { pattern: /INSURANCE PREMIUM.*IP/i, category: "Insurance", description: "Home Insurance", confidence: 0.9 },
+      { pattern: /ADMINISTRATION FEE HL.*SC/i, category: "Fees", description: "Home Loan Admin Fee", confidence: 0.9 },
     ],
 
     // Special handling for TAKEALOT
-    takealotPattern: /M\*TAKEALO\*T|TAKEALO.*T/i,
+    takealotPattern: /M\*TAKEALO\*T.*cheque card purchase/i,
     
     excludePatterns: [
       // Inter-account transfers and internal bank movements
-      /Ces - ib transfer|FUND TRANSFERS|INT ACNT TRF|AUTOBANK TRANSFER/i,
-      /ib payment|interbank.*payment|internal.*transfer|account.*transfer/i,
+      /Ces.*ib transfer|FUND TRANSFERS.*MARSH|INT ACNT TRF.*Ces|AUTOBANK TRANSFER.*AC/i,
+      /ib payment.*JACKIE|JACKIE.*ib payment/i, // Personal transfers
+      /Withdraw.*real time transfer/i,
       
       // Bank fees and charges
       /fixed monthly fee|overdraft service fee|UCOUNT.*membership fee/i,
       /fee.*mu primary sms|ADMINISTRATION FEE HL|fee.*account.*validation/i,
-      /HONOURING FEE|ELECTRONIC PMT.*FEE|INTER ACC TRANSFER FEE/i,
+      /honouring fee|ELECTRONIC PMT.*FEE|INTER ACC TRANSFER FEE/i,
       /INTERNATIONAL TXN FEE|PREPAID FEE|#.*FEE/i,
       /CASH FINANCE CHARGE|FINANCE CHARGE/i,
       
-      // Interest income (not business income for this user)
+      // Interest income and bank interest
       /CREDIT INTEREST|excess interest|INTEREST.*CREDIT/i,
       
       // Reversed transactions and adjustments
-      /rtd-not provided for|DEBIT ORDER REVERSAL|reversal/i,
+      /rtd.not provided for|DEBIT ORDER REVERSAL|reversal/i,
       
-      // Investment transfers (Old Mutual, Investec)
-      /INVESTECPB.*debit transfer|OM UNITTRU/i,
+      // Investment transfers (Investec - these are investment account movements)
+      /INVESTECPB.*debit transfer/i,
       
       // Cash withdrawals (personal)
-      /autobank cash withdrawal|ATM.*withdrawal|CASH.*WITHDRAWAL/i
+      /autobank cash withdrawal/i,
+      
+      // Credit card payments (these are transfers, not expenses)
+      /SB CARD DC.*registered dc debit/i,
+      /DEBI CHECK PAYMENT/i,
+      
+      // Various personal payments that aren't categorizable business expenses
+      /MR NM MONK.*ib payment/i, // Personal gift
+      /ROWLAND AIRCON.*ib payment/i, // Personal home maintenance
+      /FIREWORX.*ib payment/i, // Personal home service
     ]
   };
 
@@ -395,8 +413,17 @@ const SATaxCalculator = () => {
           
           logMessage('debug', 'text-extract', `Page ${pageNum} text items found: ${textContent.items.length}`);
           
-          // Extract text items
-          const pageText = textContent.items.map(item => item.str).join(' ');
+          // Extract text items with proper spacing and line breaks
+          const pageText = textContent.items
+            .map(item => item.str)
+            .join(' ')
+            .replace(/\s+/g, ' ') // Normalize multiple spaces
+            .replace(/([A-Z]{2,})\s+([A-Z])/g, '$1 $2') // Fix spacing between words
+            .replace(/(\d{2}\s+\w{3})\s+/g, '\n$1   ') // Add line breaks before dates
+            .replace(/balance.*?\n/gi, '\n') // Remove balance header lines
+            .replace(/date.*?description.*?\n/gi, '\n') // Remove header lines
+            .trim();
+          
           pageTexts.push({
             page: pageNum,
             text: pageText,
@@ -491,12 +518,16 @@ const SATaxCalculator = () => {
     
     logMessage('debug', 'transaction-parse', `Text split into ${lines.length} lines`);
     
-    // Multiple regex patterns for different bank formats
+    // Updated regex patterns for Standard Bank format
     const patterns = {
-      standardBank: /(\d{2}\s+\w{3})\s+(.+?)\s+([\d\s,.+-]+)\s+([\d\s,.+-]+)/,
-      standardBankAlt: /(\d{2}\s+\w{3}\s+\d{4}|\d{2}\s+\w{3})\s+(.+?)\s+([+-]?\s*[\d\s,.]+)\s+([\d\s,.]+)/,
-      genericDate: /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}|\d{2}\s+\w{3})\s+(.+?)\s+([+-]?\s*[\d\s,.]+)/,
-      amountBalance: /(.+?)\s+([+-]?\s*R?\s*[\d\s,.]+)\s+(R?\s*[\d\s,.]+)$/
+      // Standard Bank format: "02 Dec   DESCRIPTION   - type   - amount   balance"
+      standardBank: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+-\s*([\d\s,.]+)\s+([\d\s,.]+)$/,
+      // Standard Bank credit format: "02 Dec   DESCRIPTION   - type   + amount   balance"  
+      standardBankCredit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+\+\s*([\d\s,.]+)\s+([\d\s,.]+)$/,
+      // Alternative Standard Bank format with more spaces
+      standardBankAlt: /(\d{2}\s+\w{3})\s+(.+?)\s+([+-])\s*([\d\s,.]+)\s+([\d\s,.]+)$/,
+      // Generic pattern for any date format
+      genericTransaction: /(\d{1,2}\s+\w{3}|\d{1,2}[\/\-]\d{1,2})\s+(.+?)\s+([+-])\s*([\d\s,.]+)\s+([\d\s,.]+)$/
     };
     
     let matchCounts = {};
@@ -513,7 +544,16 @@ const SATaxCalculator = () => {
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       
-      if (line.length < 10) continue; // Skip very short lines
+      // Skip header lines, short lines, and lines without amounts
+      if (line.length < 20 || 
+          line.includes('Date') || 
+          line.includes('Description') || 
+          line.includes('Balance') ||
+          line.includes('Customer Care') ||
+          line.includes('Website') ||
+          !line.match(/[\d\s,.]+/)) {
+        continue;
+      }
       
       let matched = false;
       let matchedPattern = '';
@@ -528,31 +568,37 @@ const SATaxCalculator = () => {
           matchCounts[patternName]++;
           
           try {
-            // Extract components based on pattern
-            let date, description, amount, balance;
+            let date, description, transactionType, amount, balance, isCredit = false;
             
-            if (patternName === 'amountBalance') {
-              [, description, amount, balance] = match;
-              date = 'Unknown';
+            if (patternName === 'standardBank') {
+              [, date, description, transactionType, amount, balance] = match;
+              isCredit = false;
+            } else if (patternName === 'standardBankCredit') {
+              [, date, description, transactionType, amount, balance] = match;
+              isCredit = true;
             } else {
-              [, date, description, amount, balance] = match;
+              [, date, description, sign, amount, balance] = match;
+              isCredit = sign === '+';
+              transactionType = isCredit ? 'credit' : 'debit';
             }
             
-            // Clean and parse amounts
-            const cleanAmount = amount.replace(/[^\d.-]/g, '');
-            const cleanBalance = balance ? balance.replace(/[^\d.-]/g, '') : '0';
+            // Clean and parse amounts - handle spaces in numbers
+            const cleanAmount = amount.replace(/\s/g, '').replace(/[^\d.]/g, '');
+            const cleanBalance = balance ? balance.replace(/\s/g, '').replace(/[^\d.-]/g, '') : '0';
             
             const numAmount = parseFloat(cleanAmount);
             const numBalance = parseFloat(cleanBalance);
             
-            if (!isNaN(numAmount) && Math.abs(numAmount) > 1) {
+            if (!isNaN(numAmount) && numAmount > 1) {
+              const finalAmount = isCredit ? numAmount : -numAmount;
+              
               const transaction = {
                 id: Date.now() + Math.random(),
                 date: date.trim(),
-                originalDescription: description.trim(),
-                amount: numAmount,
+                originalDescription: `${description.trim()} - ${transactionType}`.replace(/\s+/g, ' '),
+                amount: finalAmount,
                 balance: numBalance || 0,
-                type: numAmount > 0 ? 'credit' : 'debit',
+                type: isCredit ? 'credit' : 'debit',
                 sourceFile,
                 lineNumber: i + 1,
                 matchedPattern: patternName,
@@ -568,7 +614,9 @@ const SATaxCalculator = () => {
                 });
               }
             } else {
-              logMessage('debug', 'transaction-parse', `Invalid amount parsed: ${cleanAmount} from line: ${line.substring(0, 100)}`);
+              if (debugMode) {
+                logMessage('debug', 'transaction-parse', `Invalid amount parsed: ${cleanAmount} from line: ${line.substring(0, 100)}`);
+              }
             }
             
           } catch (parseError) {
@@ -583,7 +631,7 @@ const SATaxCalculator = () => {
         }
       }
       
-      if (!matched && debugMode && i < 50) {
+      if (!matched && debugMode && i < 50 && line.length > 30) {
         // Log some unmatched lines for debugging
         logMessage('debug', 'transaction-parse', `Line ${i + 1} did not match any pattern`, {
           line: line.substring(0, 100),
@@ -2050,7 +2098,7 @@ const SATaxCalculator = () => {
       
       {/* Footer */}
       <div className="text-center text-gray-600 text-sm py-8">
-        <p>⚖️ Please consult with a qualified tax practitioner for official tax filing and advice</p>
+        <p>Please consult with a qualified tax practitioner for official tax filing and advice</p>
         <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
         {debugMode && (
           <p className="mt-1 text-orange-600 font-medium">🔍 Debug Mode: Comprehensive logging active</p>
