@@ -4,6 +4,16 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCircle, AlertCircle, X, Edit2, Save, Plus, Trash, Eye, EyeOff, Settings, RefreshCw, FileUp } from 'lucide-react';
 
 const SATaxCalculator = () => {
+  // Helper functions
+  function getCurrentTaxYear() {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth(); // 0-indexed: 0=Jan, 1=Feb, 2=Mar
+    // SA tax year runs March 1 to Feb 28/29
+    // If we're in March or later, we're in the next tax year
+    return currentMonth >= 2 ? currentYear + 1 : currentYear;
+  }
+
   // State management
   const [selectedTaxYear, setSelectedTaxYear] = useState(getCurrentTaxYear());
   const [userAge, setUserAge] = useState('under65');
@@ -34,14 +44,6 @@ const SATaxCalculator = () => {
   // Categories
   const incomeCategories = ["Employment", "Freelance", "Investment", "Rental", "Business", "Other"];
   const expenseCategories = ["Office", "Medical", "Retirement", "Professional", "Education", "Travel", "Equipment", "Software", "Insurance", "Utilities", "Marketing", "Training", "Other"];
-
-  // Helper functions
-  function getCurrentTaxYear() {
-    const currentDate = new Date();
-    const currentYear = currentDate.getFullYear();
-    const currentMonth = currentDate.getMonth();
-    return currentMonth >= 2 ? currentYear : currentYear - 1;
-  }
 
   // Comprehensive logging system
   const logMessage = (level, category, message, data = null) => {
@@ -150,131 +152,23 @@ const SATaxCalculator = () => {
         under75: 19071 + 10455,
         over75: 19071 + 10455 + 3485
       }
+    },
+    2026: {
+      brackets: [
+        { min: 0, max: 273450, rate: 0.18 },
+        { min: 273450, max: 428550, rate: 0.26 },
+        { min: 428550, max: 593300, rate: 0.31 },
+        { min: 593300, max: 778150, rate: 0.36 },
+        { min: 778150, max: 991300, rate: 0.39 },
+        { min: 991300, max: 2100000, rate: 0.41 },
+        { min: 2100000, max: Infinity, rate: 0.45 }
+      ],
+      rebates: {
+        under65: 19920,
+        under75: 19920 + 10920,
+        over75: 19920 + 10920 + 3640
+      }
     }
-  };
-
-  // Updated categorization rules for provisional tax payer
-  const categorizationRules = {
-    income: [
-      // Primary income source - Precise Digitait (NZ company payments)
-      { pattern: /PRECISE DIGIT.*teletransmission.*inward/i, category: "Freelance", source: "NZ Company Income (Precise Digitait)", confidence: 0.98 },
-      { pattern: /teletransmission.*inward/i, category: "Freelance", source: "International Business Income", confidence: 0.9 },
-      
-      // Other legitimate business income
-      { pattern: /CASHFOCUS SALARY.*credit transfer/i, category: "Employment", source: "Employment Income", confidence: 0.9 },
-      { pattern: /ADEYIGA.*ib payment/i, category: "Freelance", source: "Client Payment", confidence: 0.85 },
-    ],
-    
-    businessExpenses: [
-      // Retirement contributions (RA) - highly deductible for provisional tax payers
-      { pattern: /10XRA COL.*service agreement|10X RETIREMENT ANN.*ib payment/i, category: "Retirement", description: "Retirement Annuity Contribution", confidence: 0.98 },
-      
-      // Medical aid contributions - fully deductible
-      { pattern: /DISC PREM.*medical aid.*contribution/i, category: "Medical", description: "Medical Aid Contribution", confidence: 0.98 },
-      { pattern: /iK \*Dr Malcol.*cheque card purchase/i, category: "Medical", description: "Medical Professional Fees", confidence: 0.9 },
-      
-      // Professional services - tax, legal, accounting
-      { pattern: /PERSONAL TAX SERVICE.*PROVTAX.*ib payment/i, category: "Professional", description: "Tax Advisory Services", confidence: 0.95 },
-      { pattern: /fee.*teletransmission.*inward/i, category: "Professional", description: "International Transfer Fees (Business)", confidence: 0.9 },
-      
-      // Business education and training
-      { pattern: /I PAYU \* UC.*cheque card purchase/i, category: "Education", description: "University of Cape Town (Business Education)", confidence: 0.9 },
-      
-      // Business software and subscriptions
-      { pattern: /Google GSUITE.*sheetsol|GOOGLE\*GSUITE.*SHEETSOL/i, category: "Software", description: "Google Workspace (Business)", confidence: 0.95 },
-      { pattern: /MSFT \*.*cheque card purchase/i, category: "Software", description: "Microsoft Office 365 (Business)", confidence: 0.9 },
-      { pattern: /CLAUDE\.AI SUBSCRIPTION.*cheque card purchase/i, category: "Software", description: "Claude AI (Business Tool)", confidence: 0.9 },
-      { pattern: /SHEET SOLVED.*ib payment/i, category: "Software", description: "Business Software/Tools", confidence: 0.85 },
-      
-      // Business communications and internet
-      { pattern: /AFRIHOST.*debit transfer/i, category: "Office", description: "Internet Services (Business)", confidence: 0.85 },
-      
-      // Business meals and entertainment (limited deduction)
-      { pattern: /BOOTLEGGER.*cheque card.*purchase|SHIFT.*ESPRESS.*cheque card purchase/i, category: "Business", description: "Business Coffee/Meals", confidence: 0.85 },
-      
-      // Business printing and stationery
-      { pattern: /ROZPRINT.*cheque card purchase/i, category: "Office", description: "Printing Services", confidence: 0.95 },
-      
-      // Property maintenance (business portion)
-      { pattern: /POINT GARDEN SERVICE.*GARDEN.*ib payment/i, category: "Office", description: "Property Maintenance (Business Portion)", confidence: 0.8 },
-      
-      // Business insurance
-      { pattern: /DISCINSURE.*insurance.*premium/i, category: "Insurance", description: "Business Insurance", confidence: 0.8 },
-      
-      // Business fuel
-      { pattern: /C\*BP PINELAND.*cheque card purchase/i, category: "Travel", description: "Business Fuel", confidence: 0.7 },
-    ],
-    
-    personalExpenses: [
-      // Explicitly excluded personal expenses as per requirements
-      { pattern: /VIRGIN ACT.*NETCASH.*service agreement/i, category: "Personal", description: "Gym Membership (EXCLUDED)", confidence: 0.95 },
-      { pattern: /OM UNITTRU.*unit trust purchase/i, category: "Investment", description: "Unit Trust Investment (EXCLUDED)", confidence: 0.95 },
-      { pattern: /Netflix\.com|NETFLIX\.COM/i, category: "Entertainment", description: "Netflix Subscription (EXCLUDED)", confidence: 0.98 },
-      { pattern: /APPLE\.COM\/BILL.*ITUNE/i, category: "Entertainment", description: "Apple Services (EXCLUDED)", confidence: 0.95 },
-      { pattern: /Google YouTube.*cheque card purchase|GOOGLE \*YouTube/i, category: "Entertainment", description: "YouTube Premium (EXCLUDED)", confidence: 0.95 },
-      { pattern: /U\*SABC TV.*cheque card purchase/i, category: "Entertainment", description: "SABC TV License (EXCLUDED)", confidence: 0.95 },
-      { pattern: /CARTRACK.*debit transfer/i, category: "Personal", description: "Vehicle Tracking (EXCLUDED)", confidence: 0.95 },
-      
-      // Personal mobile and communications
-      { pattern: /MTN PREPAID.*pre.paid payment|MTN SP.*debicheck debit order/i, category: "Personal", description: "Mobile Phone (Personal)", confidence: 0.8 },
-      
-      // Personal shopping and groceries
-      { pattern: /WOOLWORTHS.*cheque card purchase/i, category: "Personal", description: "Personal Shopping", confidence: 0.7 },
-      { pattern: /PnP.*cheque card purchase|Checkers.*cheque card purchase|Tops.*cheque card purchase/i, category: "Personal", description: "Groceries", confidence: 0.8 },
-      { pattern: /MCD.*cheque card purchase/i, category: "Personal", description: "Fast Food (Personal)", confidence: 0.8 },
-      
-      // Personal shopping centers
-      { pattern: /Howard Centre.*cheque card purchase|Willowbridge.*cheque card purchase/i, category: "Personal", description: "Shopping Centers (Personal)", confidence: 0.7 },
-      
-      // Personal entertainment
-      { pattern: /VAN HUNKS.*cheque card purchase|C\*HUDSONS.*cheque card purchase/i, category: "Personal", description: "Entertainment (Personal)", confidence: 0.8 },
-      { pattern: /Asara Wines.*cheque card purchase/i, category: "Personal", description: "Personal Alcohol", confidence: 0.8 },
-    ],
-
-    homeExpenses: [
-      { pattern: /SBSA HOMEL.*std bank bond repayment/i, category: "Mortgage", description: "Home Loan Payment", confidence: 0.98 },
-      { pattern: /SYSTEM INTEREST DEBIT.*ID/i, category: "Mortgage", description: "Mortgage Interest", confidence: 0.98 },
-      { pattern: /INSURANCE PREMIUM.*IP/i, category: "Insurance", description: "Home Insurance", confidence: 0.9 },
-      { pattern: /ADMINISTRATION FEE HL.*SC/i, category: "Fees", description: "Home Loan Admin Fee", confidence: 0.9 },
-    ],
-
-    // Special handling for TAKEALOT
-    takealotPattern: /M\*TAKEALO\*T.*cheque card purchase/i,
-    
-    excludePatterns: [
-      // Inter-account transfers and internal bank movements
-      /Ces.*ib transfer|FUND TRANSFERS.*MARSH|INT ACNT TRF.*Ces|AUTOBANK TRANSFER.*AC/i,
-      /ib payment.*JACKIE|JACKIE.*ib payment/i, // Personal transfers
-      /Withdraw.*real time transfer/i,
-      
-      // Bank fees and charges
-      /fixed monthly fee|overdraft service fee|UCOUNT.*membership fee/i,
-      /fee.*mu primary sms|ADMINISTRATION FEE HL|fee.*account.*validation/i,
-      /honouring fee|ELECTRONIC PMT.*FEE|INTER ACC TRANSFER FEE/i,
-      /INTERNATIONAL TXN FEE|PREPAID FEE|#.*FEE/i,
-      /CASH FINANCE CHARGE|FINANCE CHARGE/i,
-      
-      // Interest income and bank interest
-      /CREDIT INTEREST|excess interest|INTEREST.*CREDIT/i,
-      
-      // Reversed transactions and adjustments
-      /rtd.not provided for|DEBIT ORDER REVERSAL|reversal/i,
-      
-      // Investment transfers (Investec - these are investment account movements)
-      /INVESTECPB.*debit transfer/i,
-      
-      // Cash withdrawals (personal)
-      /autobank cash withdrawal/i,
-      
-      // Credit card payments (these are transfers, not expenses)
-      /SB CARD DC.*registered dc debit/i,
-      /DEBI CHECK PAYMENT/i,
-      
-      // Various personal payments that aren't categorizable business expenses
-      /MR NM MONK.*ib payment/i, // Personal gift
-      /ROWLAND AIRCON.*ib payment/i, // Personal home maintenance
-      /FIREWORX.*ib payment/i, // Personal home service
-    ]
   };
 
   const calculateAnnualAmount = (amount, period) => {
@@ -668,7 +562,7 @@ const SATaxCalculator = () => {
   };
 
   const categorizeTransactions = (transactions) => {
-    logMessage('info', 'categorization', `Starting categorization of ${transactions.length} transactions`);
+    logMessage('info', 'categorization', `Starting simplified categorization of ${transactions.length} transactions`);
     
     const categorized = {
       income: [],
@@ -678,20 +572,33 @@ const SATaxCalculator = () => {
       uncategorized: []
     };
 
-    let categorizedCount = 0;
     let excludedCount = 0;
 
     transactions.forEach((transaction, index) => {
       let wasProcessed = false;
       
-      // Skip excluded patterns first
-      for (const pattern of categorizationRules.excludePatterns) {
+      // Only auto-exclude obvious bank fees and internal transfers
+      const excludePatterns = [
+        /fixed monthly fee|overdraft service fee|UCOUNT.*membership fee/i,
+        /fee.*mu primary sms|ADMINISTRATION FEE HL|fee.*account.*validation/i,
+        /honouring fee|ELECTRONIC PMT.*FEE|INTER ACC TRANSFER FEE/i,
+        /INTERNATIONAL TXN FEE|PREPAID FEE|#.*FEE/i,
+        /CASH FINANCE CHARGE|FINANCE CHARGE/i,
+        /CREDIT INTEREST|excess interest|INTEREST.*CREDIT/i,
+        /rtd.not provided for|DEBIT ORDER REVERSAL|reversal/i,
+        /Ces.*ib transfer|FUND TRANSFERS.*MARSH|INT ACNT TRF.*Ces|AUTOBANK TRANSFER.*AC/i,
+        /ib payment.*JACKIE|JACKIE.*ib payment/i,
+        /Withdraw.*real time transfer/i,
+        /autobank cash withdrawal/i
+      ];
+      
+      for (const pattern of excludePatterns) {
         if (pattern.test(transaction.originalDescription)) {
           excludedCount++;
           wasProcessed = true;
           
           if (debugMode && excludedCount <= 10) {
-            logMessage('debug', 'categorization', `Transaction excluded by pattern`, {
+            logMessage('debug', 'categorization', `Transaction auto-excluded`, {
               description: transaction.originalDescription,
               pattern: pattern.toString(),
               amount: transaction.amount
@@ -703,27 +610,15 @@ const SATaxCalculator = () => {
       
       if (wasProcessed) return;
 
-      // Check for TAKEALOT special handling
-      if (categorizationRules.takealotPattern.test(transaction.originalDescription)) {
-        categorized.uncategorized.push({
-          ...transaction,
-          category: 'takealot-review',
-          reason: 'TAKEALOT purchase requires manual invoice review to separate business vs personal items'
-        });
-        
-        logMessage('debug', 'categorization', `TAKEALOT transaction flagged for review`, {
-          description: transaction.originalDescription,
-          amount: transaction.amount
-        });
-        
-        categorizedCount++;
-        return;
-      }
+      // Auto-detect only very obvious items
+      // 1. Clear income patterns
+      const obviousIncomePatterns = [
+        { pattern: /PRECISE DIGIT.*teletransmission.*inward/i, category: "Freelance", source: "NZ Company Income (Precise Digitait)" },
+        { pattern: /CASHFOCUS SALARY.*credit transfer/i, category: "Employment", source: "Employment Income" }
+      ];
 
-      // Categorize income
-      for (const rule of categorizationRules.income) {
+      for (const rule of obviousIncomePatterns) {
         if (rule.pattern.test(transaction.originalDescription) && transaction.amount > 0) {
-          const sourceTransactions = [transaction];
           const incomeEntry = {
             id: Date.now() + Math.random(),
             description: rule.source,
@@ -731,18 +626,16 @@ const SATaxCalculator = () => {
             period: 'monthly',
             source: rule.category,
             dataSource: 'auto-detected',
-            confidence: rule.confidence,
-            sourceTransactions,
+            confidence: 0.95,
+            sourceTransactions: [transaction],
             notes: `Auto-detected from: ${transaction.originalDescription}`
           };
           
           categorized.income.push(incomeEntry);
-          categorizedCount++;
           wasProcessed = true;
           
-          logMessage('debug', 'categorization', `Income categorized`, {
+          logMessage('debug', 'categorization', `Income auto-categorized`, {
             rule: rule.category,
-            confidence: rule.confidence,
             amount: transaction.amount,
             description: transaction.originalDescription.substring(0, 50)
           });
@@ -753,10 +646,15 @@ const SATaxCalculator = () => {
 
       if (wasProcessed) return;
 
-      // Categorize business expenses
-      for (const rule of categorizationRules.businessExpenses) {
+      // 2. Very obvious business expenses (high confidence only)
+      const obviousBusinessPatterns = [
+        { pattern: /10XRA COL.*service agreement|10X RETIREMENT ANN.*ib payment/i, category: "Retirement", description: "Retirement Annuity Contribution" },
+        { pattern: /DISC PREM.*medical aid.*contribution/i, category: "Medical", description: "Medical Aid Contribution" },
+        { pattern: /PERSONAL TAX SERVICE.*PROVTAX.*ib payment/i, category: "Professional", description: "Tax Advisory Services" }
+      ];
+
+      for (const rule of obviousBusinessPatterns) {
         if (rule.pattern.test(transaction.originalDescription) && transaction.amount < 0) {
-          const sourceTransactions = [transaction];
           const expenseEntry = {
             id: Date.now() + Math.random(),
             description: rule.description,
@@ -764,18 +662,16 @@ const SATaxCalculator = () => {
             period: 'monthly',
             category: rule.category,
             dataSource: 'auto-detected',
-            confidence: rule.confidence,
-            sourceTransactions,
+            confidence: 0.95,
+            sourceTransactions: [transaction],
             notes: `Auto-detected from: ${transaction.originalDescription}`
           };
           
           categorized.business.push(expenseEntry);
-          categorizedCount++;
           wasProcessed = true;
           
-          logMessage('debug', 'categorization', `Business expense categorized`, {
+          logMessage('debug', 'categorization', `Business expense auto-categorized`, {
             rule: rule.category,
-            confidence: rule.confidence,
             amount: transaction.amount,
             description: transaction.originalDescription.substring(0, 50)
           });
@@ -786,45 +682,15 @@ const SATaxCalculator = () => {
 
       if (wasProcessed) return;
 
-      // Categorize personal expenses
-      for (const rule of categorizationRules.personalExpenses) {
-        if (rule.pattern.test(transaction.originalDescription) && transaction.amount < 0) {
-          const sourceTransactions = [transaction];
-          const expenseEntry = {
-            id: Date.now() + Math.random(),
-            description: rule.description,
-            amount: Math.abs(transaction.amount),
-            period: 'monthly',
-            category: rule.category,
-            dataSource: 'auto-detected',
-            confidence: rule.confidence,
-            sourceTransactions,
-            isExcluded: true,
-            exclusionReason: 'Personal expense as per provisional tax requirements',
-            notes: `Auto-detected from: ${transaction.originalDescription}`
-          };
-          
-          categorized.personal.push(expenseEntry);
-          categorizedCount++;
-          wasProcessed = true;
-          
-          logMessage('debug', 'categorization', `Personal expense categorized (excluded)`, {
-            rule: rule.category,
-            confidence: rule.confidence,
-            amount: transaction.amount,
-            description: transaction.originalDescription.substring(0, 50)
-          });
-          
-          break;
-        }
-      }
+      // 3. Home expenses (for home office calculation)
+      const homeExpensePatterns = [
+        { pattern: /SBSA HOMEL.*std bank bond repayment/i, category: "Mortgage", description: "Home Loan Payment" },
+        { pattern: /SYSTEM INTEREST DEBIT.*ID/i, category: "Mortgage", description: "Mortgage Interest" },
+        { pattern: /INSURANCE PREMIUM.*IP/i, category: "Insurance", description: "Home Insurance" }
+      ];
 
-      if (wasProcessed) return;
-
-      // Categorize home expenses
-      for (const rule of categorizationRules.homeExpenses) {
+      for (const rule of homeExpensePatterns) {
         if (rule.pattern.test(transaction.originalDescription)) {
-          const sourceTransactions = [transaction];
           const expenseEntry = {
             id: Date.now() + Math.random(),
             description: rule.description,
@@ -832,18 +698,16 @@ const SATaxCalculator = () => {
             period: 'monthly',
             category: rule.category,
             dataSource: 'auto-detected',
-            confidence: rule.confidence,
-            sourceTransactions,
+            confidence: 0.95,
+            sourceTransactions: [transaction],
             notes: `Auto-detected from: ${transaction.originalDescription}`
           };
           
           categorized.home.push(expenseEntry);
-          categorizedCount++;
           wasProcessed = true;
           
-          logMessage('debug', 'categorization', `Home expense categorized`, {
+          logMessage('debug', 'categorization', `Home expense auto-categorized`, {
             rule: rule.category,
-            confidence: rule.confidence,
             amount: transaction.amount,
             description: transaction.originalDescription.substring(0, 50)
           });
@@ -852,20 +716,14 @@ const SATaxCalculator = () => {
         }
       }
 
-      // If not categorized and significant amount, add to uncategorized
-      if (!wasProcessed && Math.abs(transaction.amount) > 50) {
+      if (wasProcessed) return;
+
+      // Everything else goes to uncategorized for manual review
+      if (Math.abs(transaction.amount) > 10) { // Only significant amounts
         categorized.uncategorized.push({
           ...transaction,
-          reason: 'Could not automatically categorize this transaction'
+          reason: 'Requires manual categorization - potential income or business expense'
         });
-        
-        if (debugMode && categorized.uncategorized.length <= 10) {
-          logMessage('debug', 'categorization', `Transaction uncategorized`, {
-            description: transaction.originalDescription.substring(0, 50),
-            amount: transaction.amount,
-            reason: 'No matching categorization rule'
-          });
-        }
       }
     });
 
@@ -892,12 +750,6 @@ const SATaxCalculator = () => {
           confidence: 1.0,
           notes: `${homeOfficePercentage}% of R${mortgageInterest.toFixed(2)} annual mortgage interest`
         });
-        
-        logMessage('info', 'categorization', 'Home office mortgage interest deduction calculated', {
-          annualMortgageInterest: mortgageInterest,
-          homeOfficePercentage: homeOfficePercentage,
-          monthlyDeduction: (mortgageInterest * homeOfficePercentage / 100) / 12
-        });
       }
 
       if (homeInsurance > 0) {
@@ -911,28 +763,20 @@ const SATaxCalculator = () => {
           confidence: 1.0,
           notes: `${homeOfficePercentage}% of R${homeInsurance.toFixed(2)} annual home insurance`
         });
-        
-        logMessage('info', 'categorization', 'Home office insurance deduction calculated', {
-          annualHomeInsurance: homeInsurance,
-          homeOfficePercentage: homeOfficePercentage,
-          monthlyDeduction: (homeInsurance * homeOfficePercentage / 100) / 12
-        });
       }
     }
 
     const categorizationSummary = {
       totalTransactions: transactions.length,
-      categorized: categorizedCount,
+      autoIncome: categorized.income.length,
+      autoBusiness: categorized.business.length,
+      autoHome: categorized.home.length,
       excluded: excludedCount,
       uncategorized: categorized.uncategorized.length,
-      income: categorized.income.length,
-      business: categorized.business.length,
-      personal: categorized.personal.length,
-      home: categorized.home.length,
-      categorizationRate: `${((categorizedCount / transactions.length) * 100).toFixed(1)}%`
+      requiresReview: categorized.uncategorized.length
     };
 
-    logMessage('info', 'categorization', 'Categorization completed', categorizationSummary);
+    logMessage('info', 'categorization', 'Simplified categorization completed', categorizationSummary);
 
     return categorized;
   };
@@ -1036,6 +880,174 @@ const SATaxCalculator = () => {
 
     // Remove from uncategorized
     setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
+  };
+
+  // New guided categorization functions
+  const categorizeAsIncome = (transaction) => {
+    // Show a modal or dropdown to select income type
+    const incomeType = prompt(`Categorize as income:\n\n1. Employment\n2. Freelance/Contract\n3. Investment\n4. Rental\n5. Business\n6. Other\n\nEnter number (1-6):`) || '6';
+    
+    const incomeTypes = {
+      '1': 'Employment',
+      '2': 'Freelance', 
+      '3': 'Investment',
+      '4': 'Rental',
+      '5': 'Business',
+      '6': 'Other'
+    };
+
+    const selectedType = incomeTypes[incomeType] || 'Other';
+    
+    const incomeEntry = {
+      id: Date.now() + Math.random(),
+      description: transaction.originalDescription,
+      amount: Math.abs(transaction.amount),
+      period: 'monthly',
+      source: selectedType,
+      dataSource: 'manual-categorized',
+      confidence: 1.0,
+      sourceTransactions: [transaction],
+      notes: `Manually categorized as ${selectedType} income on ${new Date().toLocaleDateString()}`
+    };
+
+    setIncomeEntries(prev => [...prev, incomeEntry]);
+    setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
+    
+    logMessage('info', 'manual-categorization', `Transaction categorized as ${selectedType} income`, {
+      description: transaction.originalDescription,
+      amount: transaction.amount
+    });
+  };
+
+  const categorizeAsBusiness = (transaction) => {
+    // Show options for business expense categories
+    const expenseType = prompt(`Categorize as business expense:\n\n1. Office supplies/Equipment\n2. Software/Subscriptions\n3. Professional services\n4. Travel/Fuel\n5. Marketing\n6. Training/Education\n7. Insurance\n8. Medical aid\n9. Retirement contributions\n10. Other\n\nEnter number (1-10):`) || '10';
+    
+    const expenseTypes = {
+      '1': 'Equipment',
+      '2': 'Software',
+      '3': 'Professional',
+      '4': 'Travel',
+      '5': 'Marketing',
+      '6': 'Education',
+      '7': 'Insurance',
+      '8': 'Medical',
+      '9': 'Retirement',
+      '10': 'Other'
+    };
+
+    const selectedType = expenseTypes[expenseType] || 'Other';
+    
+    const expenseEntry = {
+      id: Date.now() + Math.random(),
+      description: transaction.originalDescription,
+      amount: Math.abs(transaction.amount),
+      period: 'monthly',
+      category: selectedType,
+      dataSource: 'manual-categorized',
+      confidence: 1.0,
+      sourceTransactions: [transaction],
+      notes: `Manually categorized as ${selectedType} business expense on ${new Date().toLocaleDateString()}`
+    };
+
+    setBusinessExpenses(prev => [...prev, expenseEntry]);
+    setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
+    
+    logMessage('info', 'manual-categorization', `Transaction categorized as ${selectedType} business expense`, {
+      description: transaction.originalDescription,
+      amount: transaction.amount
+    });
+  };
+
+  const categorizeAsPersonal = (transaction) => {
+    const expenseEntry = {
+      id: Date.now() + Math.random(),
+      description: transaction.originalDescription,
+      amount: Math.abs(transaction.amount),
+      period: 'monthly',
+      category: 'Personal',
+      dataSource: 'manual-categorized',
+      confidence: 1.0,
+      sourceTransactions: [transaction],
+      isExcluded: true,
+      exclusionReason: 'Personal expense - not deductible',
+      notes: `Manually categorized as personal expense on ${new Date().toLocaleDateString()}`
+    };
+
+    setPersonalExpenses(prev => [...prev, expenseEntry]);
+    setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
+    
+    logMessage('info', 'manual-categorization', `Transaction categorized as personal expense`, {
+      description: transaction.originalDescription,
+      amount: transaction.amount
+    });
+  };
+
+  const skipTransaction = (transaction) => {
+    // Remove from uncategorized - it won't be included in tax calculations
+    setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
+    
+    logMessage('info', 'manual-categorization', `Transaction skipped`, {
+      description: transaction.originalDescription,
+      amount: transaction.amount,
+      reason: 'User chose to skip this transaction'
+    });
+  };
+
+  const skipAllRemaining = () => {
+    if (confirm(`Skip all ${uncategorizedTransactions.length} remaining transactions? They won't be included in tax calculations.`)) {
+      logMessage('info', 'manual-categorization', `All remaining transactions skipped`, {
+        count: uncategorizedTransactions.length
+      });
+      setUncategorizedTransactions([]);
+    }
+  };
+
+  const autoCategorizeSimilar = () => {
+    // Simple auto-categorization for remaining items based on keywords
+    let categorizedCount = 0;
+    const remaining = [...uncategorizedTransactions];
+    
+    remaining.forEach(transaction => {
+      const desc = transaction.originalDescription.toLowerCase();
+      let categorized = false;
+      
+      // Auto-categorize obvious personal expenses
+      const personalKeywords = ['netflix', 'youtube', 'virgin', 'woolworths', 'pnp', 'checkers', 'mcd', 'engen', 'bp'];
+      if (personalKeywords.some(keyword => desc.includes(keyword)) && transaction.amount < 0) {
+        categorizeAsPersonal(transaction);
+        categorized = true;
+        categorizedCount++;
+      }
+      
+      // Auto-categorize obvious business expenses
+      const businessKeywords = ['google', 'microsoft', 'software', 'office', 'claude', 'ai'];
+      if (!categorized && businessKeywords.some(keyword => desc.includes(keyword)) && transaction.amount < 0) {
+        const expenseEntry = {
+          id: Date.now() + Math.random(),
+          description: transaction.originalDescription,
+          amount: Math.abs(transaction.amount),
+          period: 'monthly',
+          category: 'Software',
+          dataSource: 'auto-categorized-similar',
+          confidence: 0.7,
+          sourceTransactions: [transaction],
+          notes: `Auto-categorized based on keywords on ${new Date().toLocaleDateString()}`
+        };
+        setBusinessExpenses(prev => [...prev, expenseEntry]);
+        setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
+        categorizedCount++;
+      }
+    });
+    
+    if (categorizedCount > 0) {
+      alert(`Auto-categorized ${categorizedCount} similar transactions. Please review them in the Income/Expenses tabs.`);
+      logMessage('info', 'auto-categorization', `Auto-categorized similar transactions`, {
+        count: categorizedCount
+      });
+    } else {
+      alert('No obvious similar transactions found for auto-categorization.');
+    }
   };
 
   const moveExpenseToPersonal = (expense) => {
@@ -1148,6 +1160,8 @@ const SATaxCalculator = () => {
       'moved-from-personal': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
       'moved-from-business': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
       'moved-from-uncategorized': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
+      'manual-categorized': { color: 'bg-green-100 text-green-800', text: 'Manual' },
+      'auto-categorized-similar': { color: 'bg-blue-100 text-blue-800', text: 'Auto' },
       'excluded': { color: 'bg-red-100 text-red-800', text: 'Excluded' }
     };
     
@@ -1332,8 +1346,8 @@ const SATaxCalculator = () => {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-4">Get Started with Your Tax Calculation</h3>
                 <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-                  Upload your bank statement PDFs for intelligent transaction categorization optimized for provisional tax payers. 
-                  Automatically identifies business income and expenses while excluding personal items.
+                  Upload your bank statement PDFs for intelligent transaction extraction. 
+                  The system will read all transactions and let you categorize them as income or business expenses.
                 </p>
                 
                 <label className={`inline-flex items-center px-6 py-3 ${
@@ -1354,8 +1368,34 @@ const SATaxCalculator = () => {
                 <div className="mt-6">
                   <p className="text-sm text-gray-500">
                     Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
-                    Automatically applies {homeOfficePercentage}% home office deduction
+                    Auto-applies {homeOfficePercentage}% home office deduction • Manual categorization for accuracy
                   </p>
+                </div>
+              </div>
+            )}
+
+            {/* Additional Upload Section for Existing Users */}
+            {(incomeEntries.length > 0 || businessExpenses.length > 0 || personalExpenses.length > 0 || uploadedFiles.length > 0) && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800">Add More Documents</h3>
+                    <p className="text-sm text-gray-600">Upload additional bank statements to extract more transactions</p>
+                  </div>
+                  <label className={`inline-flex items-center px-4 py-2 ${
+                    pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
+                  } text-white rounded-lg cursor-pointer`}>
+                    <Upload className="mr-2" size={16} />
+                    Upload More PDFs
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      multiple
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      disabled={isProcessing || !pdfJsLoaded}
+                    />
+                  </label>
                 </div>
               </div>
             )}
@@ -1747,97 +1787,151 @@ const SATaxCalculator = () => {
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <div className="flex items-center justify-between mb-6">
                   <div>
-                    <h3 className="text-xl font-semibold text-orange-700">Manual Review Required</h3>
+                    <h3 className="text-xl font-semibold text-orange-700">Transaction Categorization</h3>
                     <p className="text-sm text-gray-600">
-                      {uncategorizedTransactions.length} transactions need your attention
+                      {uncategorizedTransactions.length} transactions need categorization • Click buttons to categorize each item
                     </p>
                   </div>
                 </div>
                 
-                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
                   <div className="flex items-start space-x-3">
-                    <AlertCircle className="text-orange-600 mt-1" size={20} />
+                    <AlertCircle className="text-blue-600 mt-1" size={20} />
                     <div>
-                      <h4 className="font-semibold text-orange-800 mb-1">Review Instructions</h4>
-                      <p className="text-orange-700 text-sm">
-                        TAKEALOT purchases require PDF invoice verification to separate business from personal items.
-                        Inter-bank payments, interest income, and bank charges are automatically excluded from calculations.
-                      </p>
+                      <h4 className="font-semibold text-blue-800 mb-1">Categorization Guide</h4>
+                      <div className="text-blue-700 text-sm space-y-1">
+                        <p><strong>Income:</strong> Money received for work, services, investments, or business activities</p>
+                        <p><strong>Business Expense:</strong> Costs directly related to earning income (office supplies, software, professional fees, etc.)</p>
+                        <p><strong>Personal:</strong> Personal spending not related to business (groceries, entertainment, personal shopping)</p>
+                        <p><strong>Skip:</strong> Bank fees, transfers between accounts, or items you're unsure about</p>
+                      </div>
                     </div>
                   </div>
                 </div>
                 
                 <div className="space-y-4">
                   {uncategorizedTransactions.map((transaction) => (
-                    <div key={transaction.id} className={`p-4 rounded-lg border-l-4 ${
-                      transaction.category === 'takealot-review' ? 'bg-yellow-50 border-yellow-500' : 'bg-gray-50 border-orange-500'
-                    }`}>
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1">
-                          <div className="font-medium text-lg">{transaction.originalDescription}</div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            {transaction.date} • {formatCurrency(transaction.amount)} • {transaction.type}
+                    <div key={transaction.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-orange-500">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-lg mb-1">{transaction.originalDescription}</div>
+                          <div className="flex items-center space-x-4 text-sm text-gray-600 mb-2">
+                            <span><strong>Date:</strong> {transaction.date}</span>
+                            <span><strong>Amount:</strong> {formatCurrency(Math.abs(transaction.amount))}</span>
+                            <span className={`px-2 py-1 rounded text-xs ${
+                              transaction.amount > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                            }`}>
+                              {transaction.amount > 0 ? 'Money In' : 'Money Out'}
+                            </span>
                           </div>
-                          {transaction.category === 'takealot-review' && (
-                            <div className="mt-2 p-3 bg-yellow-100 rounded text-sm">
-                              <strong>⚠️ TAKEALOT PURCHASE:</strong> Review PDF invoice to identify business items (stationery, computer equipment) vs personal items (e.g., football)
-                            </div>
-                          )}
-                          {transaction.reason && (
-                            <div className="text-sm text-gray-500 mt-2">
-                              <strong>Reason:</strong> {transaction.reason}
-                            </div>
-                          )}
-                          <div className="text-xs text-gray-400 mt-1">
-                            Source: {transaction.sourceFile} (Line {transaction.lineNumber})
+                          <div className="text-xs text-gray-400">
+                            Source: {transaction.sourceFile} • Line {transaction.lineNumber}
                           </div>
                         </div>
                         
-                        <div className="flex flex-col space-y-2 ml-6">
-                          {transaction.category !== 'takealot-review' && (
+                        <div className="flex flex-col space-y-2 ml-6 min-w-max">
+                          {transaction.amount > 0 ? (
+                            // Money coming in - likely income
                             <>
                               <button
-                                onClick={() => moveTransactionToCategory(transaction, 'income')}
-                                className="px-4 py-2 text-sm bg-green-200 text-green-700 rounded hover:bg-green-300"
-                                title="Move to Income"
+                                onClick={() => categorizeAsIncome(transaction)}
+                                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-medium"
                               >
-                                📈 Income
+                                💰 Income
                               </button>
                               <button
-                                onClick={() => moveTransactionToCategory(transaction, 'business')}
-                                className="px-4 py-2 text-sm bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
-                                title="Move to Business Expenses"
+                                onClick={() => skipTransaction(transaction)}
+                                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 text-sm"
                               >
-                                💼 Business
+                                ⏭️ Skip
+                              </button>
+                            </>
+                          ) : (
+                            // Money going out - could be business or personal
+                            <>
+                              <button
+                                onClick={() => categorizeAsBusiness(transaction)}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                              >
+                                💼 Business Expense
                               </button>
                               <button
-                                onClick={() => moveTransactionToCategory(transaction, 'personal')}
-                                className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                                title="Move to Personal Expenses"
+                                onClick={() => categorizeAsPersonal(transaction)}
+                                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 text-sm font-medium"
                               >
                                 👤 Personal
                               </button>
+                              <button
+                                onClick={() => skipTransaction(transaction)}
+                                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 text-sm"
+                              >
+                                ⏭️ Skip
+                              </button>
                             </>
-                          )}
-                          {transaction.category === 'takealot-review' && (
-                            <div className="text-sm text-yellow-700 font-medium text-center p-2 bg-yellow-100 rounded">
-                              📋 Manual Invoice<br/>Review Required
-                            </div>
                           )}
                         </div>
                       </div>
+                      
+                      {/* Quick categorization hints */}
+                      <div className="mt-3 p-3 bg-blue-50 rounded text-xs">
+                        <strong>💡 Quick Hints:</strong>
+                        {transaction.originalDescription.toLowerCase().includes('takealo') && 
+                          " TAKEALOT - Review invoice: business items (stationery, office supplies) vs personal items"}
+                        {transaction.originalDescription.toLowerCase().includes('google') && 
+                          " Google services - Could be business software (GSuite, Cloud) or personal (YouTube, Play Store)"}
+                        {transaction.originalDescription.toLowerCase().includes('microsoft') && 
+                          " Microsoft - Likely business (Office 365) if used for work"}
+                        {transaction.originalDescription.toLowerCase().includes('netflix') && 
+                          " Netflix - Personal entertainment (not deductible)"}
+                        {transaction.originalDescription.toLowerCase().includes('medical') && 
+                          " Medical - Could be medical aid (business) or medical expenses"}
+                        {transaction.originalDescription.toLowerCase().includes('fuel') && 
+                          " Fuel - Business portion deductible if used for work travel"}
+                      </div>
                     </div>
                   ))}
+                </div>
+                
+                {/* Bulk actions */}
+                <div className="mt-6 p-4 bg-gray-100 rounded-lg">
+                  <h4 className="font-semibold text-gray-800 mb-3">Bulk Actions</h4>
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => skipAllRemaining()}
+                      className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600"
+                    >
+                      Skip All Remaining
+                    </button>
+                    <button
+                      onClick={() => autoCategorizeSimilar()}
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      Auto-categorize Similar
+                    </button>
+                  </div>
                 </div>
               </div>
             ) : (
               <div className="bg-white rounded-lg shadow-lg p-12 text-center">
                 <CheckCircle className="mx-auto mb-4 text-green-600" size={64} />
                 <h3 className="text-2xl font-bold text-gray-800 mb-4">All Transactions Categorized!</h3>
-                <p className="text-gray-600">
-                  Great job! All transactions have been automatically categorized or manually reviewed.
-                  You can now proceed with your tax calculations.
+                <p className="text-gray-600 mb-6">
+                  Excellent! All transactions have been categorized. You can now review your income and expenses in their respective tabs.
                 </p>
+                <div className="flex justify-center space-x-4">
+                  <button
+                    onClick={() => setActiveTab('income')}
+                    className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                  >
+                    Review Income →
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('expenses')}
+                    className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                  >
+                    Review Expenses →
+                  </button>
+                </div>
               </div>
             )}
           </div>
@@ -2098,7 +2192,7 @@ const SATaxCalculator = () => {
       
       {/* Footer */}
       <div className="text-center text-gray-600 text-sm py-8">
-        <p>Please consult with a qualified tax practitioner for official tax filing and advice</p>
+        <p>Current Tax Year: {getCurrentTaxYear()} • Please consult with a qualified tax practitioner for official tax filing and advice</p>
         <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
         {debugMode && (
           <p className="mt-1 text-orange-600 font-medium">🔍 Debug Mode: Comprehensive logging active</p>
