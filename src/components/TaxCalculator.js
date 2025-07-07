@@ -6,8 +6,8 @@ import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCi
 // Import modular functions
 import { createPDFProcessor } from './pdf-processing';
 import { createCategorizer } from './transaction-categorisation';
-import { calculateTax, taxBracketsData } from './tax-calculations';
-import { formatCurrency, getCurrentTaxYear, calculateAnnualAmount, getDataSourceBadge } from './currency-formatters';
+import { calculateTax, taxBracketsData } from './utils/tax-calculations';
+import { formatCurrency, getCurrentTaxYear, calculateAnnualAmount, getDataSourceBadge } from './utils/currency-formatters';
 
 const SATaxCalculator = () => {
   // State management
