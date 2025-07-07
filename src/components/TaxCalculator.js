@@ -1,52 +1,7 @@
-"use client";
+import React, { useState, useEffect } from 'react';
+import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCircle, AlertCircle, X, Edit2, Save, Plus, Trash, Eye, EyeOff, Settings, RefreshCw, FileUp } from 'lucide-react';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Download, Edit2, Save, Plus, Trash2, Calculator, FileText, DollarSign, TrendingUp, AlertCircle, CheckCircle, Settings, Upload, FileUp, RefreshCw, Eye, EyeOff, Trash, ArrowRight, ArrowLeft, ExternalLink, X } from 'lucide-react';
-
-// PDF.js imports - In production, install with: npm install pdfjs-dist
-// For now, we'll load from CDN
-const PDFJS_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
-const PDFJS_WORKER_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-
-const ProductionTaxCalculator = () => {
-  // Auto-detect current tax year
-  const getCurrentTaxYear = () => {
-    const now = new Date();
-    const currentMonth = now.getMonth() + 1;
-    const currentYear = now.getFullYear();
-    return currentMonth >= 3 ? currentYear + 1 : currentYear;
-  };
-
-  // SARS Tax Brackets Data
-  const taxBracketsData = {
-    2026: {
-      brackets: [
-        { min: 0, max: 237100, rate: 0.18, cumulative: 0 },
-        { min: 237101, max: 370500, rate: 0.26, cumulative: 42678 },
-        { min: 370501, max: 512800, rate: 0.31, cumulative: 77362 },
-        { min: 512801, max: 673000, rate: 0.36, cumulative: 121475 },
-        { min: 673001, max: 857900, rate: 0.39, cumulative: 179147 },
-        { min: 857901, max: 1817000, rate: 0.41, cumulative: 251258 },
-        { min: 1817001, max: Infinity, rate: 0.45, cumulative: 644489 }
-      ],
-      rebates: { primary: 17235, secondary: 9444, tertiary: 3145 },
-      thresholds: { under65: 95750, under75: 148217, over75: 165689 }
-    },
-    2025: {
-      brackets: [
-        { min: 0, max: 237100, rate: 0.18, cumulative: 0 },
-        { min: 237101, max: 370500, rate: 0.26, cumulative: 42678 },
-        { min: 370501, max: 512800, rate: 0.31, cumulative: 77362 },
-        { min: 512801, max: 673000, rate: 0.36, cumulative: 121475 },
-        { min: 673001, max: 857900, rate: 0.39, cumulative: 179147 },
-        { min: 857901, max: 1817000, rate: 0.41, cumulative: 251258 },
-        { min: 1817001, max: Infinity, rate: 0.45, cumulative: 644489 }
-      ],
-      rebates: { primary: 17235, secondary: 9444, tertiary: 3145 },
-      thresholds: { under65: 95750, under75: 148217, over75: 165689 }
-    }
-  };
-
+const SATaxCalculator = () => {
   // State management
   const [selectedTaxYear, setSelectedTaxYear] = useState(getCurrentTaxYear());
   const [userAge, setUserAge] = useState('under65');
@@ -56,6 +11,7 @@ const ProductionTaxCalculator = () => {
   const [processingStatus, setProcessingStatus] = useState('');
   const [showTransactionDetails, setShowTransactionDetails] = useState(false);
   const [pdfJsLoaded, setPdfJsLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
 
   // Data states
   const [incomeEntries, setIncomeEntries] = useState([]);
@@ -65,111 +21,161 @@ const ProductionTaxCalculator = () => {
   const [rawTransactions, setRawTransactions] = useState([]);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uncategorizedTransactions, setUncategorizedTransactions] = useState([]);
-
-  // Edit states
   const [editingEntry, setEditingEntry] = useState(null);
-  const [showAddModal, setShowAddModal] = useState({ show: false, type: '' });
 
   // Categories
   const incomeCategories = ["Employment", "Freelance", "Investment", "Rental", "Business", "Other"];
   const expenseCategories = ["Office", "Medical", "Retirement", "Professional", "Education", "Travel", "Equipment", "Software", "Insurance", "Utilities", "Marketing", "Training", "Other"];
 
-  // PDF.js reference
-  const pdfjsLib = useRef(null);
+  // Tab definitions
+  const tabs = [
+    { id: 'overview', name: 'Overview', icon: TrendingUp },
+    { id: 'upload', name: 'Upload & Process', icon: Upload },
+    { id: 'income', name: 'Income', icon: DollarSign },
+    { id: 'expenses', name: 'Business Expenses', icon: CheckCircle },
+    { id: 'personal', name: 'Personal Expenses', icon: X },
+    { id: 'review', name: 'Review Required', icon: AlertCircle },
+    { id: 'tax', name: 'Tax Calculation', icon: Calculator },
+    { id: 'reports', name: 'Reports', icon: FileText }
+  ];
 
-  // Load PDF.js library
+  // Load PDF.js
   useEffect(() => {
     const loadPdfJs = async () => {
       try {
-        // Check if PDF.js is already loaded
-        if (window.pdfjsLib) {
-          pdfjsLib.current = window.pdfjsLib;
-          pdfjsLib.current.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
+        if (typeof window !== 'undefined' && !window.pdfjsLib) {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+          script.onload = () => {
+            window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+            setPdfJsLoaded(true);
+          };
+          document.head.appendChild(script);
+        } else if (window.pdfjsLib) {
           setPdfJsLoaded(true);
-          return;
         }
-
-        // Load PDF.js from CDN
-        const script = document.createElement('script');
-        script.src = PDFJS_CDN;
-        script.onload = () => {
-          pdfjsLib.current = window.pdfjsLib;
-          pdfjsLib.current.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_CDN;
-          setPdfJsLoaded(true);
-          console.log('PDF.js loaded successfully');
-        };
-        script.onerror = () => {
-          console.error('Failed to load PDF.js');
-          setProcessingStatus('Failed to load PDF processing library');
-        };
-        document.head.appendChild(script);
       } catch (error) {
-        console.error('Error loading PDF.js:', error);
-        setProcessingStatus('Error loading PDF processing library');
+        console.error('Failed to load PDF.js:', error);
       }
     };
-
     loadPdfJs();
   }, []);
 
-  // Updated categorization rules based on your specific requirements
+  // Tax brackets and rebates data
+  const taxBracketsData = {
+    2024: {
+      brackets: [
+        { min: 0, max: 237100, rate: 0.18 },
+        { min: 237100, max: 370500, rate: 0.26 },
+        { min: 370500, max: 512800, rate: 0.31 },
+        { min: 512800, max: 673000, rate: 0.36 },
+        { min: 673000, max: 857900, rate: 0.39 },
+        { min: 857900, max: 1817600, rate: 0.41 },
+        { min: 1817600, max: Infinity, rate: 0.45 }
+      ],
+      rebates: {
+        under65: 17235,
+        under75: 17235 + 9444,
+        over75: 17235 + 9444 + 3145
+      }
+    },
+    2025: {
+      brackets: [
+        { min: 0, max: 262250, rate: 0.18 },
+        { min: 262250, max: 410460, rate: 0.26 },
+        { min: 410460, max: 567890, rate: 0.31 },
+        { min: 567890, max: 744800, rate: 0.36 },
+        { min: 744800, max: 949320, rate: 0.39 },
+        { min: 949320, max: 2011300, rate: 0.41 },
+        { min: 2011300, max: Infinity, rate: 0.45 }
+      ],
+      rebates: {
+        under65: 19071,
+        under75: 19071 + 10455,
+        over75: 19071 + 10455 + 3485
+      }
+    }
+  };
+
+  // Updated categorization rules for provisional tax payer
   const categorizationRules = {
     income: [
-      { pattern: /PRECISE DIGIT.*teletransmission inward/i, category: "Employment", source: "NZ Company Salary", confidence: 0.95 },
-      { pattern: /CASHFOCUS SALARY/i, category: "Employment", source: "Cashfocus Salary", confidence: 0.9 },
-      { pattern: /teletransmission inward/i, category: "Employment", source: "International Transfer", confidence: 0.8 },
-      { pattern: /JACKIE.*ib payment/i, category: "Other Income", source: "Freelance/Contract", confidence: 0.8 },
-      { pattern: /ADEYIGA.*ib payment/i, category: "Other Income", source: "Freelance/Contract", confidence: 0.8 },
-      { pattern: /SALARY|WAGE/i, category: "Employment", source: "Salary/Wages", confidence: 0.7 },
-      { pattern: /DIVIDEND/i, category: "Investment", source: "Dividend Income", confidence: 0.8 },
-      { pattern: /INTEREST.*CREDIT/i, category: "Investment", source: "Interest Income", confidence: 0.7 }
+      // Primary income source - Precise Digitait (NZ company payments)
+      { pattern: /PRECISE DIGIT.*teletransmission inward/i, category: "Freelance", source: "NZ Company Income (Precise Digitait)", confidence: 0.98 },
+      { pattern: /teletransmission inward/i, category: "Freelance", source: "International Business Income", confidence: 0.9 },
+      
+      // Other legitimate business income
+      { pattern: /CASHFOCUS SALARY/i, category: "Employment", source: "Employment Income", confidence: 0.9 },
+      
+      // Note: Removed ib payments, interest, and other items that should be excluded
     ],
     
     businessExpenses: [
-      // Retirement contributions
-      { pattern: /10XRA COL.*service agreement/i, category: "Retirement", description: "Retirement Annuity (10X)", confidence: 0.95 },
+      // Retirement contributions (RA) - highly deductible for provisional tax payers
+      { pattern: /10XRA COL.*service agreement|10X RETIREMENT ANN/i, category: "Retirement", description: "Retirement Annuity Contribution", confidence: 0.98 },
       
-      // Medical expenses
-      { pattern: /DISC PREM.*medical aid/i, category: "Medical", description: "Medical Aid Contribution", confidence: 0.95 },
+      // Medical aid contributions - fully deductible
+      { pattern: /DISC PREM.*medical aid/i, category: "Medical", description: "Medical Aid Contribution", confidence: 0.98 },
       { pattern: /iK \*Dr Malcol|Dr\s+Malcol/i, category: "Medical", description: "Medical Professional Fees", confidence: 0.9 },
       
-      // Business operations
-      { pattern: /BOOTLEGGER|SHIFT.*ESPRESS/i, category: "Business", description: "Business Coffee Expenses", confidence: 0.9 },
-      { pattern: /ROZPRINT/i, category: "Business", description: "Printing Services", confidence: 0.95 },
-      { pattern: /PERSONAL TAX SERVICE|TAX.*ADVISOR/i, category: "Professional", description: "Tax Advisory Services", confidence: 0.9 },
-      { pattern: /PAYU \* UC|I PAYU \* UC/i, category: "Education", description: "University of Cape Town", confidence: 0.9 },
-      { pattern: /POINT GARDEN SERVICE|GARDEN.*SERVICE/i, category: "Office", description: "Gardening/Maintenance Services", confidence: 0.85 },
+      // Professional services - tax, legal, accounting
+      { pattern: /PERSONAL TAX SERVICE|TAX.*ADVISOR|PROVTAX/i, category: "Professional", description: "Tax Advisory Services", confidence: 0.95 },
+      { pattern: /fee.*teletransmission.*inward|teletransmission.*fee/i, category: "Professional", description: "International Transfer Fees (Business)", confidence: 0.9 },
       
-      // Insurance and professional fees
-      { pattern: /DISCINSURE.*insurance|DISCINSURE.*debit transfer/i, category: "Insurance", description: "Insurance Premiums", confidence: 0.85 },
-      { pattern: /fee.*teletransmission.*inward|teletransmission.*fee/i, category: "Professional", description: "International Transfer Fees", confidence: 0.9 },
+      // Business education and training
+      { pattern: /PAYU \* UC|I PAYU \* UC/i, category: "Education", description: "University of Cape Town (Business Education)", confidence: 0.9 },
       
-      // Software subscriptions (from credit card)
-      { pattern: /Google GSUITE|GOOGLE\*GSUITE/i, category: "Software", description: "Google Workspace", confidence: 0.9 },
-      { pattern: /MSFT \*|Microsoft/i, category: "Software", description: "Microsoft Office", confidence: 0.9 },
-      { pattern: /CLAUDE\.AI SUBSCRIPTION/i, category: "Software", description: "Claude AI", confidence: 0.9 },
+      // Business software and subscriptions
+      { pattern: /Google GSUITE|GOOGLE\*GSUITE/i, category: "Software", description: "Google Workspace (Business)", confidence: 0.95 },
+      { pattern: /MSFT \*|Microsoft/i, category: "Software", description: "Microsoft Office 365 (Business)", confidence: 0.9 },
+      { pattern: /CLAUDE\.AI SUBSCRIPTION/i, category: "Software", description: "Claude AI (Business Tool)", confidence: 0.9 },
+      { pattern: /SHEET SOLVED/i, category: "Software", description: "Business Software/Tools", confidence: 0.85 },
       
-      // Internet services
-      { pattern: /AFRIHOST|INTERNET.*SERVICE/i, category: "Business", description: "Internet Services", confidence: 0.8 }
+      // Business communications and internet
+      { pattern: /AFRIHOST|INTERNET.*SERVICE/i, category: "Office", description: "Internet Services (Business)", confidence: 0.85 },
+      
+      // Business meals and entertainment (limited deduction)
+      { pattern: /BOOTLEGGER|SHIFT.*ESPRESS/i, category: "Business", description: "Business Coffee/Meals", confidence: 0.85 },
+      
+      // Business printing and stationery
+      { pattern: /ROZPRINT/i, category: "Office", description: "Printing Services", confidence: 0.95 },
+      
+      // Property maintenance (business portion)
+      { pattern: /POINT GARDEN SERVICE|GARDEN.*SERVICE/i, category: "Office", description: "Property Maintenance (Business Portion)", confidence: 0.8 },
+      
+      // Business insurance
+      { pattern: /DISCINSURE.*insurance.*premium/i, category: "Insurance", description: "Business Insurance", confidence: 0.8 },
+      
+      // Business equipment and supplies (from TAKEALOT - requires verification)
+      // Note: TAKEALOT requires manual review as specified
     ],
     
     personalExpenses: [
-      // Explicitly excluded as per your requirements
-      { pattern: /VIRGIN ACT.*NETCASH|GYM.*MEMBERSHIP/i, category: "Personal", description: "Gym Membership (EXCLUDED)", confidence: 0.9 },
-      { pattern: /OM UNITTRU.*unit trust|OLD MUTUAL.*INVESTMENT/i, category: "Investment", description: "Unit Trust Investment (EXCLUDED)", confidence: 0.9 },
-      { pattern: /Netflix|NETFLIX/i, category: "Entertainment", description: "Netflix Subscription (EXCLUDED)", confidence: 0.95 },
-      { pattern: /APPLE\.COM|APPLE.*SERVICES/i, category: "Entertainment", description: "Apple Services (EXCLUDED)", confidence: 0.9 },
-      { pattern: /YouTube|YOUTUBE|Google YouTube/i, category: "Entertainment", description: "YouTube Premium (EXCLUDED)", confidence: 0.9 },
-      { pattern: /SABC.*TV.*LICE|U\*SABC TV/i, category: "Entertainment", description: "SABC TV License (EXCLUDED)", confidence: 0.9 },
-      { pattern: /CARTRACK/i, category: "Personal", description: "Vehicle Tracking (EXCLUDED)", confidence: 0.9 },
-      { pattern: /MTN PREPAID|CELL.*PHONE|MOBILE/i, category: "Personal", description: "Mobile Phone", confidence: 0.8 }
+      // Explicitly excluded personal expenses as per requirements
+      { pattern: /VIRGIN ACT.*NETCASH|GYM.*MEMBERSHIP/i, category: "Personal", description: "Gym Membership (EXCLUDED)", confidence: 0.95 },
+      { pattern: /OM UNITTRU.*unit trust|OLD MUTUAL.*INVESTMENT/i, category: "Investment", description: "Unit Trust Investment (EXCLUDED)", confidence: 0.95 },
+      { pattern: /Netflix|NETFLIX/i, category: "Entertainment", description: "Netflix Subscription (EXCLUDED)", confidence: 0.98 },
+      { pattern: /APPLE\.COM|APPLE.*SERVICES/i, category: "Entertainment", description: "Apple Services (EXCLUDED)", confidence: 0.95 },
+      { pattern: /YouTube|YOUTUBE|Google YouTube/i, category: "Entertainment", description: "YouTube Premium (EXCLUDED)", confidence: 0.95 },
+      { pattern: /SABC.*TV.*LICE|U\*SABC TV/i, category: "Entertainment", description: "SABC TV License (EXCLUDED)", confidence: 0.95 },
+      { pattern: /CARTRACK/i, category: "Personal", description: "Vehicle Tracking (EXCLUDED)", confidence: 0.95 },
+      
+      // Personal mobile and communications
+      { pattern: /MTN PREPAID|MTN SP.*debicheck|CELL.*PHONE|MOBILE/i, category: "Personal", description: "Mobile Phone (Personal)", confidence: 0.8 },
+      
+      // Personal shopping and groceries
+      { pattern: /WOOLWORTHS.*(?!.*BB5065|.*office|.*business)/i, category: "Personal", description: "Personal Shopping", confidence: 0.7 },
+      { pattern: /PnP|Pick n Pay|CHECKERS|SPAR/i, category: "Personal", description: "Groceries", confidence: 0.8 },
+      
+      // Personal fuel and transport
+      { pattern: /ENGEN|BP.*(?!.*business)|SHELL|CALTEX/i, category: "Personal", description: "Personal Fuel", confidence: 0.7 },
     ],
 
     homeExpenses: [
-      { pattern: /SBSA HOMEL.*bond repayment|HOME.*LOAN|MORTGAGE/i, category: "Mortgage", description: "Home Loan Payment", confidence: 0.95 },
-      { pattern: /SYSTEM INTEREST DEBIT.*ID|MORTGAGE.*INTEREST/i, category: "Mortgage", description: "Mortgage Interest", confidence: 0.95 },
-      { pattern: /INSURANCE PREMIUM.*IP|HOME.*INSURANCE/i, category: "Insurance", description: "Home Insurance", confidence: 0.85 },
-      { pattern: /MUNICIPAL.*RATES|CITY.*RATES/i, category: "Utilities", description: "Municipal Rates", confidence: 0.85 },
+      { pattern: /SBSA HOMEL.*bond repayment|HOME.*LOAN|MORTGAGE/i, category: "Mortgage", description: "Home Loan Payment", confidence: 0.98 },
+      { pattern: /SYSTEM INTEREST DEBIT.*ID|MORTGAGE.*INTEREST/i, category: "Mortgage", description: "Mortgage Interest", confidence: 0.98 },
+      { pattern: /INSURANCE PREMIUM.*IP|HOME.*INSURANCE/i, category: "Insurance", description: "Home Insurance", confidence: 0.9 },
+      { pattern: /MUNICIPAL.*RATES|CITY.*RATES/i, category: "Utilities", description: "Municipal Rates", confidence: 0.9 },
       { pattern: /ELECTRICITY|ESKOM/i, category: "Utilities", description: "Electricity", confidence: 0.9 }
     ],
 
@@ -177,655 +183,449 @@ const ProductionTaxCalculator = () => {
     takealotPattern: /M\*TAKEALO\*T|TAKEALO.*T/i,
     
     excludePatterns: [
+      // Inter-account transfers and internal bank movements
       /Ces - ib transfer|FUND TRANSFERS|INT ACNT TRF|AUTOBANK TRANSFER/i,
+      /ib payment|interbank.*payment|internal.*transfer|account.*transfer/i,
+      
+      // Bank fees and charges
       /fixed monthly fee|overdraft service fee|UCOUNT.*membership fee/i,
-      /fee.*mu primary sms|ADMINISTRATION FEE HL|rtd-not provided for/i,
-      /DEBIT ORDER REVERSAL|excess interest|HONOURING FEE/i,
-      /rtd-not provided for|AUTOBANK TRANSFER|DEBIT ORDER REVERSAL/i,
-      /INVESTECPB.*debit transfer/i // Investment transfers
+      /fee.*mu primary sms|ADMINISTRATION FEE HL|fee.*account.*validation/i,
+      /HONOURING FEE|ELECTRONIC PMT.*FEE|INTER ACC TRANSFER FEE/i,
+      /INTERNATIONAL TXN FEE|PREPAID FEE|#.*FEE/i,
+      /CASH FINANCE CHARGE|FINANCE CHARGE/i,
+      
+      // Interest income (not business income for this user)
+      /CREDIT INTEREST|excess interest|INTEREST.*CREDIT/i,
+      
+      // Reversed transactions and adjustments
+      /rtd-not provided for|DEBIT ORDER REVERSAL|reversal/i,
+      
+      // Investment transfers (Old Mutual, Investec)
+      /INVESTECPB.*debit transfer|OM UNITTRU/i,
+      
+      // Cash withdrawals (personal)
+      /autobank cash withdrawal|ATM.*withdrawal|CASH.*WITHDRAWAL/i
     ]
   };
 
-  // Real PDF Text Extraction Function
-  const extractTextFromPDF = async (file) => {
-    if (!pdfJsLoaded || !pdfjsLib.current) {
-      throw new Error('PDF.js library not loaded');
+  // Helper functions
+  function getCurrentTaxYear() {
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear();
+    const currentMonth = currentDate.getMonth();
+    return currentMonth >= 2 ? currentYear : currentYear - 1;
+  }
+
+  const calculateAnnualAmount = (amount, period) => {
+    if (!amount) return 0;
+    const multipliers = { daily: 365, weekly: 52, monthly: 12, annually: 1 };
+    return amount * (multipliers[period] || 1);
+  };
+
+  // Calculate totals
+  const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
+    sum + calculateAnnualAmount(entry.amount, entry.period), 0);
+  
+  const totalDeductibleExpenses = businessExpenses
+    .filter(expense => !expense.isExcluded)
+    .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
+  
+  const totalPersonalExpenses = personalExpenses
+    .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
+
+  const taxableIncome = Math.max(0, totalAnnualIncome - totalDeductibleExpenses);
+
+  // Tax calculation
+  const calculateTax = (income, year, ageCategory) => {
+    const data = taxBracketsData[year];
+    if (!data) return { tax: 0, grossTax: 0, rebates: 0, effectiveRate: 0, marginalRate: 0 };
+
+    let grossTax = 0;
+    let marginalRate = 0;
+
+    for (const bracket of data.brackets) {
+      if (income > bracket.min) {
+        const taxableInBracket = Math.min(income, bracket.max) - bracket.min;
+        grossTax += taxableInBracket * bracket.rate;
+        marginalRate = bracket.rate * 100;
+      }
     }
 
+    const rebates = data.rebates[ageCategory] || 0;
+    const netTax = Math.max(0, grossTax - rebates);
+    const effectiveRate = income > 0 ? (netTax / income) * 100 : 0;
+
+    return {
+      tax: netTax,
+      grossTax,
+      rebates,
+      effectiveRate,
+      marginalRate
+    };
+  };
+
+  const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
+  const monthlyTaxRequired = taxCalculation.tax / 12;
+
+  // PDF Processing
+  const handleFileUpload = async (event) => {
+    const files = Array.from(event.target.files);
+    if (files.length === 0 || !pdfJsLoaded) return;
+
+    setIsProcessing(true);
+    setProcessingStatus('Starting PDF processing...');
+
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.current.getDocument({ data: arrayBuffer }).promise;
-      
-      let fullText = '';
-      const pages = [];
-      
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        
-        // Extract text items and preserve positioning
-        const textItems = textContent.items.map(item => ({
-          text: item.str,
-          x: item.transform[4],
-          y: item.transform[5],
-          width: item.width,
-          height: item.height
-        }));
-        
-        // Sort by Y position (top to bottom) then X position (left to right)
-        textItems.sort((a, b) => {
-          if (Math.abs(a.y - b.y) > 5) { // Different lines
-            return b.y - a.y; // Top to bottom
-          }
-          return a.x - b.x; // Left to right on same line
-        });
-        
-        // Group items by line and join
-        let currentY = null;
-        let currentLine = [];
-        const lines = [];
-        
-        textItems.forEach(item => {
-          if (currentY === null || Math.abs(item.y - currentY) > 5) {
-            if (currentLine.length > 0) {
-              lines.push(currentLine.map(i => i.text).join(' '));
-            }
-            currentLine = [item];
-            currentY = item.y;
-          } else {
-            currentLine.push(item);
-          }
-        });
-        
-        if (currentLine.length > 0) {
-          lines.push(currentLine.map(i => i.text).join(' '));
-        }
-        
-        const pageText = lines.join('\n');
-        pages.push(pageText);
-        fullText += pageText + '\n';
+      for (const file of files) {
+        setProcessingStatus(`Processing ${file.name}...`);
+        await processPDF(file);
       }
-      
-      return { fullText, pages, pageCount: pdf.numPages };
+      setProcessingStatus(`Successfully processed ${files.length} file(s)`);
+      setTimeout(() => setProcessingStatus(''), 3000);
     } catch (error) {
-      console.error('PDF extraction error:', error);
-      throw new Error(`Failed to extract text from PDF: ${error.message}`);
+      console.error('Error processing files:', error);
+      setProcessingStatus(`Error: ${error.message}`);
+    } finally {
+      setIsProcessing(false);
     }
   };
 
-  // Enhanced transaction parsing for multiple bank formats
-  const parseTransactions = (text, fileName) => {
+  const processPDF = async (file) => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await window.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+    
+    let allText = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const textContent = await page.getTextContent();
+      const pageText = textContent.items.map(item => item.str).join(' ');
+      allText += pageText + '\n';
+    }
+
+    const transactions = extractTransactions(allText, file.name);
+    const processedData = categorizeTransactions(transactions);
+
+    // Update states
+    setRawTransactions(prev => [...prev, ...transactions]);
+    setIncomeEntries(prev => [...prev, ...processedData.income]);
+    setBusinessExpenses(prev => [...prev, ...processedData.business]);
+    setPersonalExpenses(prev => [...prev, ...processedData.personal]);
+    setHomeExpenses(prev => [...prev, ...processedData.home]);
+    setUncategorizedTransactions(prev => [...prev, ...processedData.uncategorized]);
+
+    setUploadedFiles(prev => [...prev, {
+      name: file.name,
+      pageCount: pdf.numPages,
+      transactionCount: transactions.length,
+      processedAt: new Date()
+    }]);
+  };
+
+  const extractTransactions = (text, sourceFile) => {
     const transactions = [];
-    const lines = text.split('\n');
+    const lines = text.split('\n').filter(line => line.trim().length > 0);
+    
+    // Standard Bank pattern
+    const standardBankPattern = /(\d{2}\s+\w{3})\s+(.+?)\s+([\d\s,.+-]+)\s+([\d\s,.+-]+)/;
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
+      const match = line.match(standardBankPattern);
       
-      // Skip headers, empty lines, and non-transaction lines
-      if (!line || 
-          line.includes('Date') || 
-          line.includes('Description') || 
-          line.includes('Customer Care') || 
-          line.includes('Account') ||
-          line.includes('Transaction date range') ||
-          line.includes('Available balance') ||
-          line.length < 10) {
-        continue;
-      }
-      
-      // Multiple parsing patterns for different bank formats
-      const patterns = [
-        // Standard Bank format: "03 Mar PRECISE DIGITAIT25062ZA0706051 - teletransmission inward + 155 112.20 155 070.98"
-        {
-          regex: /^(\d{1,2}\s+\w{3})\s+(.+?)\s+([+-])\s*([\d\s,]+\.\d{2})\s+([\d\s,]+\.\d{2})$/,
-          parse: (match) => {
-            const [, date, description, sign, amount, balance] = match;
-            return {
-              date: date.trim(),
-              description: description.trim(),
-              amount: parseFloat(amount.replace(/[\s,]/g, '')),
-              type: sign === '+' ? 'credit' : 'debit',
-              balance: parseFloat(balance.replace(/[\s,]/g, ''))
-            };
-          }
-        },
+      if (match) {
+        const [, date, description, amount, balance] = match;
+        const numAmount = parseFloat(amount.replace(/[^\d.-]/g, ''));
         
-        // Standard Bank fee format: "03 Mar PRECISE DIGITAIT25035ZA0728536 # - fee-teletransmission inward - 542.69 108 413.43"
-        {
-          regex: /^(\d{1,2}\s+\w{3})\s+(.+?)\s+#\s+-\s+(.+?)\s+-\s+([\d\s,]+\.\d{2})\s+([\d\s,]+\.\d{2})$/,
-          parse: (match) => {
-            const [, date, reference, description, amount, balance] = match;
-            return {
-              date: date.trim(),
-              description: `${reference.trim()} # - ${description.trim()}`,
-              amount: parseFloat(amount.replace(/[\s,]/g, '')),
-              type: 'debit',
-              balance: parseFloat(balance.replace(/[\s,]/g, ''))
-            };
-          }
-        },
-        
-        // Alternative format: "Date Description In (R) Out (R) Balance (R)"
-        {
-          regex: /^(\d{1,2}\s+\w{3})\s+(.+?)\s+(?:\+\s*)?([\d\s,.]+)?\s*-?\s*([\d\s,.]+)?\s*([\d\s,.]+)$/,
-          parse: (match) => {
-            const [, date, description, inAmount, outAmount, balance] = match;
-            const inValue = inAmount ? parseFloat(inAmount.replace(/[\s,]/g, '')) : 0;
-            const outValue = outAmount ? parseFloat(outAmount.replace(/[\s,]/g, '')) : 0;
-            
-            return {
-              date: date.trim(),
-              description: description.trim(),
-              amount: inValue > 0 ? inValue : outValue,
-              type: inValue > 0 ? 'credit' : 'debit',
-              balance: balance ? parseFloat(balance.replace(/[\s,]/g, '')) : 0
-            };
-          }
-        },
-        
-        // FNB/ABSA format with C/D indicators
-        {
-          regex: /^(\d{1,2}\/\d{1,2}\/\d{4})\s+(.+?)\s+([\d,.]+)\s*([CD])\s*([\d,.]+)$/,
-          parse: (match) => {
-            const [, date, description, amount, type, balance] = match;
-            return {
-              date: date.trim(),
-              description: description.trim(),
-              amount: parseFloat(amount.replace(/[,]/g, '')),
-              type: type === 'C' ? 'credit' : 'debit',
-              balance: parseFloat(balance.replace(/[,]/g, ''))
-            };
-          }
+        if (!isNaN(numAmount) && Math.abs(numAmount) > 1) {
+          transactions.push({
+            id: Date.now() + Math.random(),
+            date: date.trim(),
+            originalDescription: description.trim(),
+            amount: numAmount,
+            balance: parseFloat(balance.replace(/[^\d.-]/g, '')) || 0,
+            type: numAmount > 0 ? 'credit' : 'debit',
+            sourceFile
+          });
         }
-      ];
-      
-      let transaction = null;
-      
-      for (const pattern of patterns) {
-        const match = line.match(pattern.regex);
-        if (match) {
-          try {
-            const parsed = pattern.parse(match);
-            if (parsed.amount > 0) {
-              transaction = {
-                id: `${fileName}_${Date.now()}_${Math.random()}`,
-                ...parsed,
-                sourceFile: fileName,
-                rawLine: line
-              };
-              break;
-            }
-          } catch (error) {
-            console.warn('Error parsing transaction:', error, line);
-          }
-        }
-      }
-      
-      if (transaction) {
-        transactions.push(transaction);
       }
     }
     
     return transactions;
   };
 
-  // Categorize transaction with confidence scoring and special handling
-  const categorizeTransaction = (transaction) => {
-    const { description, amount, type } = transaction;
-    
-    // Check exclusion patterns first
-    for (const pattern of categorizationRules.excludePatterns) {
-      if (pattern.test(description)) {
-        return { 
-          category: 'exclude', 
-          reason: 'Inter-account transfer or bank fee',
-          confidence: 0.95
-        };
-      }
-    }
-
-    // Special handling for TAKEALOT - requires manual verification
-    if (categorizationRules.takealotPattern.test(description)) {
-      return {
-        category: 'takealot-review',
-        subcategory: 'Supplies',
-        confidence: 0.5,
-        cleanDescription: 'TAKEALOT Purchase - REQUIRES INVOICE REVIEW',
-        originalDescription: description,
-        amount: amount,
-        reason: 'TAKEALOT purchases need PDF invoice verification to separate business vs personal items',
-        specialNote: 'Only include business items (stationery, computer equipment), exclude personal items'
-      };
-    }
-    
-    let bestMatch = null;
-    let highestConfidence = 0;
-    
-    const ruleCategories = type === 'credit' ? 
-      [categorizationRules.income] : 
-      [categorizationRules.homeExpenses, categorizationRules.businessExpenses, categorizationRules.personalExpenses];
-    
-    for (const ruleSet of ruleCategories) {
-      for (const rule of ruleSet) {
-        if (rule.pattern.test(description) && rule.confidence > highestConfidence) {
-          
-          // Special handling for personal expenses - mark as excluded
-          const isPersonalExpense = ruleSet === categorizationRules.personalExpenses;
-          
-          bestMatch = {
-            category: type === 'credit' ? 'income' : 
-                     ruleSet === categorizationRules.homeExpenses ? 'homeExpense' :
-                     isPersonalExpense ? 'personalExpense' : 'businessExpense',
-            subcategory: rule.category,
-            confidence: rule.confidence,
-            cleanDescription: rule.description || rule.source,
-            originalDescription: description,
-            amount: amount,
-            matchedRule: rule.pattern.toString(),
-            isExcluded: isPersonalExpense,
-            exclusionReason: isPersonalExpense ? 'Personal expense - excluded as per requirements' : null
-          };
-          highestConfidence = rule.confidence;
-        }
-      }
-    }
-    
-    return bestMatch || { 
-      category: 'uncategorized', 
-      originalDescription: description, 
-      amount, 
-      type, 
-      confidence: 0,
-      reason: 'No matching categorization rule found'
+  const categorizeTransactions = (transactions) => {
+    const categorized = {
+      income: [],
+      business: [],
+      personal: [],
+      home: [],
+      uncategorized: []
     };
-  };
 
-  // Process uploaded PDF files
-  const processPDFFiles = async (files) => {
-    if (!pdfJsLoaded) {
-      setProcessingStatus('PDF.js library not loaded. Please refresh and try again.');
-      return;
-    }
+    transactions.forEach(transaction => {
+      // Skip excluded patterns first
+      if (categorizationRules.excludePatterns.some(pattern => 
+        pattern.test(transaction.originalDescription))) {
+        return; // Skip this transaction entirely
+      }
 
-    setIsProcessing(true);
-    setProcessingStatus('Starting PDF processing...');
-    
-    const allTransactions = [];
-    const processedFiles = [];
-    const errors = [];
-    
-    try {
-      for (let fileIndex = 0; fileIndex < files.length; fileIndex++) {
-        const file = files[fileIndex];
-        setProcessingStatus(`Processing ${file.name} (${fileIndex + 1}/${files.length})...`);
-        
-        try {
-          const extractedData = await extractTextFromPDF(file);
-          const transactions = parseTransactions(extractedData.fullText, file.name);
-          
-          allTransactions.push(...transactions);
-          processedFiles.push({
-            name: file.name,
-            size: file.size,
-            transactionCount: transactions.length,
-            pageCount: extractedData.pageCount,
-            processedAt: new Date()
-          });
-          
-          console.log(`Processed ${file.name}: ${transactions.length} transactions found`);
-          
-        } catch (fileError) {
-          console.error(`Error processing ${file.name}:`, fileError);
-          errors.push(`${file.name}: ${fileError.message}`);
-        }
-      }
-      
-      if (allTransactions.length === 0) {
-        setProcessingStatus('No transactions found in uploaded files. Please check PDF format.');
-        return;
-      }
-      
-      setUploadedFiles(prev => [...prev, ...processedFiles]);
-      setProcessingStatus(`Categorizing ${allTransactions.length} transactions...`);
-      
-      // Categorize all transactions
-      const categorizedTransactions = allTransactions.map(transaction => {
-        const result = categorizeTransaction(transaction);
-        return { ...transaction, ...result };
-      });
-      
-      setRawTransactions(prev => [...prev, ...categorizedTransactions]);
-      
-      // Separate and aggregate transactions by category
-      const income = categorizedTransactions.filter(t => t.category === 'income');
-      const business = categorizedTransactions.filter(t => t.category === 'businessExpense');
-      const personal = categorizedTransactions.filter(t => t.category === 'personalExpense');
-      const home = categorizedTransactions.filter(t => t.category === 'homeExpense');
-      const uncategorized = categorizedTransactions.filter(t => t.category === 'uncategorized');
-      const takealotReview = categorizedTransactions.filter(t => t.category === 'takealot-review');
-      
-      // Aggregate similar transactions
-      const aggregateTransactions = (transactions, excludePersonal = false) => {
-        const grouped = {};
-        transactions.forEach(t => {
-          // Skip personal expenses if excludePersonal is true
-          if (excludePersonal && t.isExcluded) {
-            return;
-          }
-          
-          const key = `${t.cleanDescription || t.originalDescription}_${t.subcategory}`;
-          if (grouped[key]) {
-            grouped[key].amount += t.amount;
-            grouped[key].transactionCount += 1;
-            grouped[key].sourceTransactions.push(t);
-          } else {
-            grouped[key] = {
-              id: Date.now() + Math.random(),
-              description: t.cleanDescription || t.originalDescription,
-              amount: t.amount,
-              period: 'extracted',
-              category: t.subcategory,
-              dataSource: t.isExcluded ? 'excluded' : 'auto-detected',
-              confidence: t.confidence,
-              notes: t.isExcluded ? `EXCLUDED: ${t.exclusionReason}` : `Auto-detected from: ${t.originalDescription}`,
-              transactionCount: 1,
-              sourceTransactions: [t],
-              matchedRule: t.matchedRule,
-              isExcluded: t.isExcluded || false,
-              exclusionReason: t.exclusionReason
-            };
-          }
+      // Check for TAKEALOT special handling
+      if (categorizationRules.takealotPattern.test(transaction.originalDescription)) {
+        categorized.uncategorized.push({
+          ...transaction,
+          category: 'takealot-review',
+          reason: 'TAKEALOT purchase requires manual invoice review to separate business vs personal items'
         });
-        return Object.values(grouped);
-      };
-      
-      // Update state with aggregated transactions
-      const newIncome = aggregateTransactions(income).map(entry => ({ ...entry, source: entry.category }));
-      const newBusiness = aggregateTransactions(business, true); // Exclude personal expenses
-      const newPersonal = aggregateTransactions(personal); // Keep all personal for reference
-      const newHome = aggregateTransactions(home);
-      
-      setIncomeEntries(prev => [...prev, ...newIncome]);
-      setBusinessExpenses(prev => [...prev, ...newBusiness]);
-      setPersonalExpenses(prev => [...prev, ...newPersonal]);
-      setHomeExpenses(prev => [...prev, ...newHome]);
-      setUncategorizedTransactions(prev => [...prev, ...uncategorized, ...takealotReview]);
-      
-      // Calculate home office expenses if home expenses found
-      if (home.length > 0) {
-        // Only calculate for mortgage interest and home insurance
-        const mortgageInterest = home.filter(h => h.subcategory === 'Mortgage' && h.cleanDescription === 'Mortgage Interest');
-        const homeInsurance = home.filter(h => h.subcategory === 'Insurance' && h.cleanDescription === 'Home Insurance');
-        
-        const totalMortgageInterest = mortgageInterest.reduce((sum, expense) => sum + expense.amount, 0);
-        const totalHomeInsurance = homeInsurance.reduce((sum, expense) => sum + expense.amount, 0);
-        
-        const homeOfficeExpenses = [];
-        
-        if (totalMortgageInterest > 0) {
-          const businessMortgageInterest = totalMortgageInterest * (homeOfficePercentage / 100);
-          homeOfficeExpenses.push({
-            id: Date.now() + Math.random(),
-            description: "Home Office - Mortgage Interest",
-            amount: businessMortgageInterest,
-            period: 'calculated',
-            category: 'Office',
-            dataSource: 'calculated',
-            confidence: 0.9,
-            notes: `${homeOfficePercentage}% of mortgage interest (R${totalMortgageInterest.toFixed(2)})`
-          });
-        }
-        
-        if (totalHomeInsurance > 0) {
-          const businessHomeInsurance = totalHomeInsurance * (homeOfficePercentage / 100);
-          homeOfficeExpenses.push({
-            id: Date.now() + Math.random(),
-            description: "Home Office - Home Insurance",
-            amount: businessHomeInsurance,
-            period: 'calculated',
-            category: 'Office',
-            dataSource: 'calculated',
-            confidence: 0.9,
-            notes: `${homeOfficePercentage}% of home insurance (R${totalHomeInsurance.toFixed(2)})`
-          });
-        }
-        
-        if (homeOfficeExpenses.length > 0) {
-          setBusinessExpenses(prev => [...prev, ...homeOfficeExpenses]);
-        }
-      }
-      
-      let statusMessage = `Successfully processed ${allTransactions.length} transactions from ${processedFiles.length} file(s)`;
-      if (errors.length > 0) {
-        statusMessage += `. Errors: ${errors.length}`;
-      }
-      
-      setProcessingStatus(statusMessage);
-      setTimeout(() => setProcessingStatus(''), 5000);
-      
-    } catch (error) {
-      console.error('Error processing PDFs:', error);
-      setProcessingStatus(`Error processing files: ${error.message}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // Handle file upload
-  const handleFileUpload = (event) => {
-    const files = Array.from(event.target.files);
-    if (files.length > 0) {
-      // Validate file types
-      const pdfFiles = files.filter(file => file.type === 'application/pdf');
-      if (pdfFiles.length !== files.length) {
-        alert('Please select only PDF files.');
-        event.target.value = '';
         return;
       }
+
+      // Categorize income
+      for (const rule of categorizationRules.income) {
+        if (rule.pattern.test(transaction.originalDescription) && transaction.amount > 0) {
+          const sourceTransactions = [transaction];
+          categorized.income.push({
+            id: Date.now() + Math.random(),
+            description: rule.source,
+            amount: Math.abs(transaction.amount),
+            period: 'monthly',
+            source: rule.category,
+            dataSource: 'auto-detected',
+            confidence: rule.confidence,
+            sourceTransactions,
+            notes: `Auto-detected from: ${transaction.originalDescription}`
+          });
+          return;
+        }
+      }
+
+      // Categorize business expenses
+      for (const rule of categorizationRules.businessExpenses) {
+        if (rule.pattern.test(transaction.originalDescription) && transaction.amount < 0) {
+          const sourceTransactions = [transaction];
+          categorized.business.push({
+            id: Date.now() + Math.random(),
+            description: rule.description,
+            amount: Math.abs(transaction.amount),
+            period: 'monthly',
+            category: rule.category,
+            dataSource: 'auto-detected',
+            confidence: rule.confidence,
+            sourceTransactions,
+            notes: `Auto-detected from: ${transaction.originalDescription}`
+          });
+          return;
+        }
+      }
+
+      // Categorize personal expenses
+      for (const rule of categorizationRules.personalExpenses) {
+        if (rule.pattern.test(transaction.originalDescription) && transaction.amount < 0) {
+          const sourceTransactions = [transaction];
+          categorized.personal.push({
+            id: Date.now() + Math.random(),
+            description: rule.description,
+            amount: Math.abs(transaction.amount),
+            period: 'monthly',
+            category: rule.category,
+            dataSource: 'auto-detected',
+            confidence: rule.confidence,
+            sourceTransactions,
+            isExcluded: true,
+            exclusionReason: 'Personal expense as per provisional tax requirements',
+            notes: `Auto-detected from: ${transaction.originalDescription}`
+          });
+          return;
+        }
+      }
+
+      // Categorize home expenses
+      for (const rule of categorizationRules.homeExpenses) {
+        if (rule.pattern.test(transaction.originalDescription)) {
+          const sourceTransactions = [transaction];
+          categorized.home.push({
+            id: Date.now() + Math.random(),
+            description: rule.description,
+            amount: Math.abs(transaction.amount),
+            period: 'monthly',
+            category: rule.category,
+            dataSource: 'auto-detected',
+            confidence: rule.confidence,
+            sourceTransactions,
+            notes: `Auto-detected from: ${transaction.originalDescription}`
+          });
+          return;
+        }
+      }
+
+      // If not categorized, add to uncategorized (but only significant amounts)
+      if (Math.abs(transaction.amount) > 50) {
+        categorized.uncategorized.push({
+          ...transaction,
+          reason: 'Could not automatically categorize this transaction'
+        });
+      }
+    });
+
+    // Calculate home office deductions
+    if (categorized.home.length > 0) {
+      const mortgageInterest = categorized.home
+        .filter(expense => expense.category === 'Mortgage' && expense.description.includes('Interest'))
+        .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
       
-      processPDFFiles(pdfFiles);
+      const homeInsurance = categorized.home
+        .filter(expense => expense.category === 'Insurance')
+        .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
+
+      if (mortgageInterest > 0) {
+        categorized.business.push({
+          id: Date.now() + Math.random(),
+          description: `Home Office Deduction - Mortgage Interest (${homeOfficePercentage}%)`,
+          amount: (mortgageInterest * homeOfficePercentage / 100) / 12,
+          period: 'monthly',
+          category: 'Office',
+          dataSource: 'calculated',
+          confidence: 1.0,
+          notes: `${homeOfficePercentage}% of R${mortgageInterest.toFixed(2)} annual mortgage interest`
+        });
+      }
+
+      if (homeInsurance > 0) {
+        categorized.business.push({
+          id: Date.now() + Math.random(),
+          description: `Home Office Deduction - Home Insurance (${homeOfficePercentage}%)`,
+          amount: (homeInsurance * homeOfficePercentage / 100) / 12,
+          period: 'monthly',
+          category: 'Office',
+          dataSource: 'calculated',
+          confidence: 1.0,
+          notes: `${homeOfficePercentage}% of R${homeInsurance.toFixed(2)} annual home insurance`
+        });
+      }
     }
-    event.target.value = '';
+
+    return categorized;
   };
 
-  // Manual entry functions
+  // CRUD operations
   const addIncomeEntry = () => {
     const newEntry = {
       id: Date.now(),
-      description: "New Income Source",
+      description: '',
       amount: 0,
-      period: "annual",
-      source: "Employment",
-      dataSource: "manual",
-      notes: "",
-      confidence: 1.0
+      period: 'monthly',
+      source: 'Other',
+      dataSource: 'manual',
+      notes: ''
     };
     setIncomeEntries([...incomeEntries, newEntry]);
     setEditingEntry({ type: 'income', id: newEntry.id });
   };
 
-  const addExpenseEntry = (type = 'business') => {
-    const newExpense = {
+  const addExpenseEntry = (type) => {
+    const newEntry = {
       id: Date.now(),
-      description: type === 'business' ? "New Business Expense" : "New Personal Expense",
+      description: '',
       amount: 0,
-      period: "annual",
-      category: type === 'business' ? "Business" : "Personal",
-      dataSource: "manual",
-      notes: "",
-      confidence: 1.0
+      period: 'monthly',
+      category: type === 'business' ? 'Other' : 'Personal',
+      dataSource: 'manual',
+      notes: ''
     };
     
     if (type === 'business') {
-      setBusinessExpenses([...businessExpenses, newExpense]);
+      setBusinessExpenses([...businessExpenses, newEntry]);
     } else {
-      setPersonalExpenses([...personalExpenses, newExpense]);
+      setPersonalExpenses([...personalExpenses, newEntry]);
     }
-    
-    setEditingEntry({ type: type === 'business' ? 'expense' : 'personal', id: newExpense.id });
+    setEditingEntry({ type: type === 'business' ? 'expense' : 'personal', id: newEntry.id });
   };
 
-  // Update functions
   const updateIncomeEntry = (id, field, value) => {
-    setIncomeEntries(incomeEntries.map(entry => 
-      entry.id === id ? { 
-        ...entry, 
-        [field]: field === 'amount' ? parseFloat(value) || 0 : value,
-        dataSource: entry.dataSource === 'auto-detected' ? 'modified' : entry.dataSource
-      } : entry
+    setIncomeEntries(prev => prev.map(entry =>
+      entry.id === id ? { ...entry, [field]: value, dataSource: 'modified' } : entry
     ));
   };
 
   const updateExpenseEntry = (id, field, value) => {
-    setBusinessExpenses(businessExpenses.map(expense => 
-      expense.id === id ? { 
-        ...expense, 
-        [field]: field === 'amount' ? parseFloat(value) || 0 : value,
-        dataSource: expense.dataSource === 'auto-detected' ? 'modified' : expense.dataSource
-      } : expense
+    setBusinessExpenses(prev => prev.map(entry =>
+      entry.id === id ? { ...entry, [field]: value, dataSource: 'modified' } : entry
     ));
   };
 
   const updatePersonalExpense = (id, field, value) => {
-    setPersonalExpenses(personalExpenses.map(expense => 
-      expense.id === id ? { 
-        ...expense, 
-        [field]: field === 'amount' ? parseFloat(value) || 0 : value,
-        dataSource: expense.dataSource === 'auto-detected' ? 'modified' : expense.dataSource
-      } : expense
+    setPersonalExpenses(prev => prev.map(entry =>
+      entry.id === id ? { ...entry, [field]: value, dataSource: 'modified' } : entry
     ));
   };
 
-  // Delete functions
   const deleteIncomeEntry = (id) => {
-    setIncomeEntries(incomeEntries.filter(entry => entry.id !== id));
+    setIncomeEntries(prev => prev.filter(entry => entry.id !== id));
+    setEditingEntry(null);
   };
 
   const deleteExpenseEntry = (id) => {
-    setBusinessExpenses(businessExpenses.filter(expense => expense.id !== id));
+    setBusinessExpenses(prev => prev.filter(entry => entry.id !== id));
+    setEditingEntry(null);
   };
 
   const deletePersonalExpense = (id) => {
-    setPersonalExpenses(personalExpenses.filter(expense => expense.id !== id));
+    setPersonalExpenses(prev => prev.filter(entry => entry.id !== id));
+    setEditingEntry(null);
   };
 
-  // Move functions
-  const moveExpenseToBusiness = (personalExpense) => {
-    const businessExpense = {
-      ...personalExpense,
-      id: Date.now(),
-      category: "Business",
-      dataSource: "moved-from-personal"
-    };
-    setBusinessExpenses([...businessExpenses, businessExpense]);
-    deletePersonalExpense(personalExpense.id);
-  };
-
-  const moveExpenseToPersonal = (businessExpense) => {
-    const personalExpense = {
-      ...businessExpense,
-      id: Date.now(),
-      category: "Personal",
-      dataSource: "moved-from-business"
-    };
-    setPersonalExpenses([...personalExpenses, personalExpense]);
-    deleteExpenseEntry(businessExpense.id);
-  };
-
+  // Helper functions for moving transactions between categories
   const moveTransactionToCategory = (transaction, targetCategory) => {
-    const newEntry = {
+    const baseEntry = {
       id: Date.now() + Math.random(),
       description: transaction.originalDescription,
-      amount: transaction.amount,
-      period: 'extracted',
-      category: targetCategory === 'income' ? 'Other' : targetCategory === 'business' ? 'Other' : 'Personal',
-      dataSource: 'manual',
-      confidence: 0.8,
-      notes: `Manually categorized from: ${transaction.originalDescription}`
+      amount: Math.abs(transaction.amount),
+      period: 'monthly',
+      dataSource: 'moved-from-uncategorized',
+      confidence: 0.5,
+      sourceTransactions: [transaction],
+      notes: `Moved from uncategorized on ${new Date().toLocaleDateString()}`
     };
-    
+
     if (targetCategory === 'income') {
-      setIncomeEntries(prev => [...prev, { ...newEntry, source: 'Other' }]);
+      setIncomeEntries(prev => [...prev, {
+        ...baseEntry,
+        source: 'Other'
+      }]);
     } else if (targetCategory === 'business') {
-      setBusinessExpenses(prev => [...prev, newEntry]);
+      setBusinessExpenses(prev => [...prev, {
+        ...baseEntry,
+        category: 'Other'
+      }]);
     } else if (targetCategory === 'personal') {
-      setPersonalExpenses(prev => [...prev, newEntry]);
+      setPersonalExpenses(prev => [...prev, {
+        ...baseEntry,
+        category: 'Personal'
+      }]);
     }
-    
+
+    // Remove from uncategorized
     setUncategorizedTransactions(prev => prev.filter(t => t.id !== transaction.id));
   };
 
-  // Tax calculation function
-  const calculateTax = useCallback((taxableIncome, taxYear, age) => {
-    if (taxableIncome <= 0) return { tax: 0, effectiveRate: 0, marginalRate: 0, grossTax: 0, rebates: 0 };
-    
-    const yearData = taxBracketsData[taxYear];
-    if (!yearData) return { tax: 0, effectiveRate: 0, marginalRate: 0, grossTax: 0, rebates: 0 };
-
-    const { brackets, rebates, thresholds } = yearData;
-    
-    const threshold = age === 'under65' ? thresholds.under65 : 
-                     age === 'under75' ? thresholds.under75 : thresholds.over75;
-    
-    if (taxableIncome <= threshold) {
-      return { tax: 0, effectiveRate: 0, marginalRate: 0, grossTax: 0, rebates: 0 };
-    }
-
-    let tax = 0;
-    let marginalRate = 0;
-    
-    for (const bracket of brackets) {
-      if (taxableIncome > bracket.max) {
-        continue;
-      } else {
-        const incomeInBracket = taxableIncome - (bracket.min - 1);
-        tax = bracket.cumulative + (incomeInBracket * bracket.rate);
-        marginalRate = bracket.rate;
-        break;
-      }
-    }
-    
-    let totalRebates = rebates.primary;
-    if (age === 'under75') totalRebates += rebates.secondary;
-    if (age === 'over75') totalRebates += rebates.secondary + rebates.tertiary;
-    
-    const finalTax = Math.max(0, tax - totalRebates);
-    const effectiveRate = taxableIncome > 0 ? (finalTax / taxableIncome) * 100 : 0;
-    
-    return { 
-      tax: finalTax, 
-      effectiveRate, 
-      marginalRate: marginalRate * 100,
-      grossTax: tax,
-      rebates: totalRebates
-    };
-  }, []);
-
-  // Calculate period amounts
-  const calculateAnnualAmount = (amount, period) => {
-    switch (period) {
-      case 'extracted': return amount;
-      case '6months': return amount * 2;
-      case '3months': return amount * 4;
-      case 'monthly': return amount * 12;
-      case 'weekly': return amount * 52;
-      case 'annual': return amount;
-      default: return amount;
-    }
+  const moveExpenseToPersonal = (expense) => {
+    setPersonalExpenses(prev => [...prev, {
+      ...expense,
+      id: Date.now() + Math.random(),
+      dataSource: 'moved-from-business',
+      notes: `${expense.notes || ''} (Moved from business expenses on ${new Date().toLocaleDateString()})`
+    }]);
+    setBusinessExpenses(prev => prev.filter(e => e.id !== expense.id));
   };
 
-  // Calculate totals - exclude personal expenses from business calculations
-  const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
-    sum + calculateAnnualAmount(entry.amount, entry.period), 0);
-  const totalBusinessExpenses = businessExpenses
-    .filter(expense => !expense.isExcluded) // Only include non-excluded expenses
-    .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period), 0);
-  const totalPersonalExpenses = personalExpenses.reduce((sum, expense) => 
-    sum + calculateAnnualAmount(expense.amount, expense.period), 0);
-  const totalDeductibleExpenses = totalBusinessExpenses; // Only business expenses are deductible
-  const taxableIncome = Math.max(0, totalAnnualIncome - totalDeductibleExpenses);
-  const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
-  const monthlyTaxRequired = taxCalculation.tax / 12;
+  const moveExpenseToBusiness = (expense) => {
+    setBusinessExpenses(prev => [...prev, {
+      ...expense,
+      id: Date.now() + Math.random(),
+      dataSource: 'moved-from-personal',
+      notes: `${expense.notes || ''} (Moved from personal expenses on ${new Date().toLocaleDateString()})`
+    }]);
+    setPersonalExpenses(prev => prev.filter(e => e.id !== expense.id));
+  };
 
   // Format currency
   const formatCurrency = (amount) => {
@@ -887,12 +687,26 @@ const ProductionTaxCalculator = () => {
       ["Marginal Tax Rate", taxCalculation.marginalRate.toFixed(1) + "%"],
       ["Home Office Percentage", homeOfficePercentage + "%"],
       [],
-      ["EXCLUSIONS APPLIED"],
-      ["Virgin Gym Membership", "Excluded as personal expense"],
-      ["Old Mutual Unit Trusts", "Excluded as investment, not retirement"],
+      ["EXCLUSIONS APPLIED FOR PROVISIONAL TAX PAYER"],
+      ["Inter-bank payments (ib payment)", "Excluded as internal transfers"],
+      ["Interest income", "Excluded as not business income"],
+      ["Finance charges & transaction fees", "Excluded as bank charges"],
+      ["Virgin gym membership", "Excluded as personal expense"],
+      ["Old Mutual unit trusts", "Excluded as investment, not retirement"],
       ["Netflix/Apple/YouTube/SABC", "Excluded as personal entertainment"],
-      ["CARTRACK Vehicle Tracking", "Excluded as not business expense"],
-      ["TAKEALOT Purchases", "Require PDF invoice verification"],
+      ["CARTRACK vehicle tracking", "Excluded as personal expense"],
+      ["Cash withdrawals", "Excluded as personal transactions"],
+      ["TAKEALOT purchases", "Require PDF invoice verification for business vs personal items"],
+      [],
+      ["PROVISIONAL TAX DEDUCTIBLE EXPENSES INCLUDED"],
+      ["Retirement Annuity (10X)", "Fully deductible - Section 11(k)"],
+      ["Medical Aid contributions", "Fully deductible - Section 11A"],
+      ["Tax advisory services", "Professional fees - Section 11(a)"],
+      ["Business software subscriptions", "Deductible business expense"],
+      ["Home office expenses", homeOfficePercentage + "% of mortgage interest & insurance"],
+      ["Business education (UCT)", "Training related to income generation"],
+      ["Printing & business supplies", "Directly related to business operations"],
+      ["Internet services", "Necessary for business operations"],
       [],
       ["DATA SOURCES"],
       ["Uploaded PDF Files", uploadedFiles.length],
@@ -913,167 +727,7 @@ const ProductionTaxCalculator = () => {
   };
 
   const exportToPDF = async () => {
-    try {
-      const { jsPDF } = await import('jspdf');
-      
-      const doc = new jsPDF();
-      let y = 20;
-      
-      // Header
-      doc.setFontSize(18);
-      doc.setFont("helvetica", "bold");
-      doc.text("SOUTH AFRICAN TAX CALCULATION REPORT", 20, y);
-      y += 10;
-      
-      doc.setFontSize(14);
-      doc.text(`${selectedTaxYear} Tax Year Assessment`, 20, y);
-      y += 10;
-      
-      doc.setFontSize(10);
-      doc.setFont("helvetica", "normal");
-      doc.text(`Generated: ${new Date().toLocaleString()}`, 20, y);
-      y += 5;
-      doc.text(`PDF Sources: ${uploadedFiles.map(f => f.name).join(', ')}`, 20, y);
-      y += 5;
-      doc.text(`Transactions Processed: ${rawTransactions.length} | Manual Entries: ${incomeEntries.filter(e => e.dataSource === 'manual').length + businessExpenses.filter(e => e.dataSource === 'manual').length}`, 20, y);
-      y += 10;
-      
-      // Executive Summary
-      doc.setFontSize(12);
-      doc.setFont("helvetica", "bold");
-      doc.text("EXECUTIVE SUMMARY", 20, y);
-      y += 8;
-      
-      doc.setFont("helvetica", "normal");
-      const summaryItems = [
-        `Total Annual Income: ${formatCurrency(totalAnnualIncome)}`,
-        `Total Deductible Expenses: ${formatCurrency(totalDeductibleExpenses)}`,
-        `Total Personal Expenses (Excluded): ${formatCurrency(totalPersonalExpenses)}`,
-        `Taxable Income: ${formatCurrency(taxableIncome)}`,
-        `Annual Tax Liability: ${formatCurrency(taxCalculation.tax)}`,
-        `Monthly Provisional Tax: ${formatCurrency(monthlyTaxRequired)}`,
-        `Effective Tax Rate: ${taxCalculation.effectiveRate.toFixed(2)}%`,
-        `Marginal Tax Rate: ${taxCalculation.marginalRate.toFixed(1)}%`,
-        `Home Office Deduction: ${homeOfficePercentage}%`
-      ];
-      
-      summaryItems.forEach(item => {
-        doc.text(item, 20, y);
-        y += 6;
-      });
-      y += 10;
-      
-      // Income breakdown
-      if (incomeEntries.length > 0) {
-        doc.setFont("helvetica", "bold");
-        doc.text("INCOME BREAKDOWN", 20, y);
-        y += 8;
-        
-        incomeEntries.forEach((entry, index) => {
-          if (y > 270) {
-            doc.addPage();
-            y = 20;
-          }
-          doc.setFont("helvetica", "normal");
-          const annualAmount = calculateAnnualAmount(entry.amount, entry.period);
-          doc.text(`${index + 1}. ${entry.description}: ${formatCurrency(annualAmount)}`, 25, y);
-          y += 5;
-          
-          doc.setFontSize(9);
-          doc.text(`   Source: ${entry.dataSource} | Confidence: ${entry.confidence ? Math.round(entry.confidence * 100) + '%' : 'N/A'} | Category: ${entry.source}`, 25, y);
-          y += 4;
-          
-          if (entry.notes) {
-            doc.text(`   Notes: ${entry.notes}`, 25, y);
-            y += 4;
-          }
-          
-          doc.setFontSize(10);
-          y += 2;
-        });
-        y += 10;
-      }
-      
-      // Business expenses breakdown
-      if (businessExpenses.length > 0) {
-        if (y > 200) {
-          doc.addPage();
-          y = 20;
-        }
-        
-        doc.setFont("helvetica", "bold");
-        doc.text("DEDUCTIBLE BUSINESS EXPENSES", 20, y);
-        y += 8;
-        
-        businessExpenses.filter(e => !e.isExcluded).forEach((expense, index) => {
-          if (y > 270) {
-            doc.addPage();
-            y = 20;
-          }
-          
-          doc.setFont("helvetica", "normal");
-          const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
-          doc.text(`${index + 1}. ${expense.description}: ${formatCurrency(annualAmount)}`, 25, y);
-          y += 5;
-          
-          doc.setFontSize(9);
-          doc.text(`   Source: ${expense.dataSource} | Confidence: ${expense.confidence ? Math.round(expense.confidence * 100) + '%' : 'N/A'} | Category: ${expense.category}`, 25, y);
-          y += 4;
-          
-          if (expense.notes) {
-            doc.text(`   Notes: ${expense.notes}`, 25, y);
-            y += 4;
-          }
-          
-          doc.setFontSize(10);
-          y += 2;
-        });
-      }
-      
-      // Excluded expenses
-      const excludedExpenses = personalExpenses.filter(e => e.isExcluded);
-      if (excludedExpenses.length > 0) {
-        if (y > 200) {
-          doc.addPage();
-          y = 20;
-        }
-        
-        doc.setFont("helvetica", "bold");
-        doc.text("EXCLUDED PERSONAL EXPENSES", 20, y);
-        y += 8;
-        
-        excludedExpenses.forEach((expense, index) => {
-          if (y > 270) {
-            doc.addPage();
-            y = 20;
-          }
-          
-          doc.setFont("helvetica", "normal");
-          const annualAmount = calculateAnnualAmount(expense.amount, expense.period);
-          doc.text(`${index + 1}. ${expense.description}: ${formatCurrency(annualAmount)}`, 25, y);
-          y += 5;
-          
-          doc.setFontSize(9);
-          doc.text(`   Reason: ${expense.exclusionReason || 'Personal expense'}`, 25, y);
-          y += 6;
-        });
-      }
-      
-      // Footer on all pages
-      const pageCount = doc.internal.getNumberOfPages();
-      for (let i = 1; i <= pageCount; i++) {
-        doc.setPage(i);
-        doc.setFontSize(8);
-        doc.text(`Page ${i} of ${pageCount}`, 180, 290);
-        doc.text("Generated by SA Tax Calculator with Smart Categorization", 20, 290);
-      }
-      
-      doc.save(`SA-Tax-Report-${selectedTaxYear}-${new Date().toISOString().split('T')[0]}.pdf`);
-      
-    } catch (error) {
-      console.error('Error generating PDF:', error);
-      alert('Error generating PDF. Please try again.');
-    }
+    alert('PDF export feature requires jsPDF library. For now, please use CSV export and convert to PDF using your preferred method.');
   };
 
   // Clear all data
@@ -1099,6 +753,7 @@ const ProductionTaxCalculator = () => {
       'calculated': { color: 'bg-purple-100 text-purple-800', text: 'Calc' },
       'moved-from-personal': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
       'moved-from-business': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
+      'moved-from-uncategorized': { color: 'bg-gray-100 text-gray-800', text: 'Moved' },
       'excluded': { color: 'bg-red-100 text-red-800', text: 'Excluded' }
     };
     
@@ -1120,8 +775,8 @@ const ProductionTaxCalculator = () => {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">SA Tax Calculator with Smart Categorization</h1>
-          <p className="text-gray-600">Real PDF.js integration with South African tax compliance</p>
+          <h1 className="text-4xl font-bold text-gray-800 mb-2">SA Provisional Tax Calculator with Smart Categorization</h1>
+          <p className="text-gray-600">Intelligent PDF analysis with provisional tax compliance for self-employed professionals</p>
           <div className="mt-2 flex justify-center space-x-4">
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
               pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
@@ -1135,6 +790,10 @@ const ProductionTaxCalculator = () => {
                 {uploadedFiles.length} files processed
               </span>
             )}
+            <span className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
+              <Calculator className="mr-1" size={16} />
+              Provisional Tax Optimized
+            </span>
           </div>
         </div>
 
@@ -1355,6 +1014,7 @@ const ProductionTaxCalculator = () => {
                   <h4 className="font-semibold text-orange-800 mb-1">Manual Review Required</h4>
                   <p className="text-orange-700 text-sm">
                     These transactions need your attention. TAKEALOT purchases require PDF invoice verification to separate business from personal items.
+                    Inter-bank payments, interest income, and bank charges are automatically excluded from business calculations.
                   </p>
                 </div>
               </div>
@@ -1735,7 +1395,7 @@ const ProductionTaxCalculator = () => {
               <div>
                 <h4 className="font-semibold text-red-800 mb-1">Excluded from Business Deductions</h4>
                 <p className="text-red-700 text-sm">
-                  These personal expenses are NOT included in your business deductions as per your requirements: Virgin gym, Old Mutual unit trusts, Netflix, Apple, YouTube, SABC, and CARTRACK.
+                  These expenses are NOT included in your business deductions as per provisional tax requirements: Personal expenses (Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK), inter-bank payments, interest income, and bank charges.
                 </p>
               </div>
             </div>
@@ -1937,10 +1597,12 @@ const ProductionTaxCalculator = () => {
                   <div className="text-xs text-gray-600">Provisional Tax Payments:</div>
                   <div className="text-xs">1st: 31 Aug {selectedTaxYear} • 2nd: 28 Feb {selectedTaxYear + 1}</div>
                 </div>
-                <div className="border-t pt-2 mt-2">
-                  <div className="text-xs text-orange-600 font-medium">⚠️ TAKEALOT Review Required</div>
-                  <div className="text-xs text-orange-700">Review PDF invoices for business vs personal items</div>
-                </div>
+                {uncategorizedTransactions.length > 0 && (
+                  <div className="border-t pt-2 mt-2">
+                    <div className="text-xs text-orange-600 font-medium">⚠️ {uncategorizedTransactions.length} items need review</div>
+                    <div className="text-xs text-orange-700">Review TAKEALOT invoices for business vs personal items</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1957,9 +1619,10 @@ const ProductionTaxCalculator = () => {
                 PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
               </div>
             </div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">SA Tax Calculator with Smart Categorization</h3>
+            <h3 className="text-2xl font-bold text-gray-800 mb-4">SA Provisional Tax Calculator with Smart Categorization</h3>
             <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-              Upload your bank statement PDFs for automatic transaction categorization following South African tax requirements. 
+              Upload your bank statement PDFs for intelligent transaction categorization optimized for provisional tax payers. 
+              Automatically identifies Precise Digitait income, excludes inter-bank payments, interest income, and bank charges.
               Personal expenses (Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK) are automatically excluded.
               TAKEALOT purchases require manual PDF invoice review to separate business items from personal.
             </p>
@@ -1978,8 +1641,8 @@ const ProductionTaxCalculator = () => {
               />
             </label>
             <p className="text-sm text-gray-500 mt-4">
-              Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec PDF statements<br/>
-              Automatically applies 8.2% home office deduction to mortgage interest and home insurance
+              Optimized for provisional tax payers • Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
+              Automatically applies {homeOfficePercentage}% home office deduction • Excludes non-deductible personal expenses
             </p>
           </div>
         )}
@@ -1994,4 +1657,4 @@ const ProductionTaxCalculator = () => {
   );
 };
 
-export default ProductionTaxCalculator;
+export default SATaxCalculator;
