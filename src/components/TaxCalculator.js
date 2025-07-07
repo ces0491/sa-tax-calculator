@@ -171,10 +171,81 @@ const SATaxCalculator = () => {
     }
   };
 
-  const calculateAnnualAmount = (amount, period) => {
+  // Period detection and annualization
+  const [statementPeriod, setStatementPeriod] = useState(null);
+  const [isProjectedIncome, setIsProjectedIncome] = useState(false);
+
+  // Detect the period covered by transactions
+  const detectStatementPeriod = (transactions) => {
+    if (transactions.length === 0) return null;
+
+    const dates = transactions.map(t => {
+      // Parse dates like "02 Dec", "05 Feb", etc.
+      const parts = t.date.split(' ');
+      if (parts.length >= 2) {
+        const day = parseInt(parts[0]);
+        const monthStr = parts[1];
+        const monthMap = {
+          'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
+          'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
+        };
+        const month = monthMap[monthStr];
+        if (month !== undefined) {
+          // Assume current year for simplicity
+          const year = new Date().getFullYear();
+          return new Date(year, month, day);
+        }
+      }
+      return null;
+    }).filter(d => d !== null);
+
+    if (dates.length === 0) return null;
+
+    const sortedDates = dates.sort((a, b) => a - b);
+    const startDate = sortedDates[0];
+    const endDate = sortedDates[sortedDates.length - 1];
+    
+    // Calculate months difference
+    const monthDiff = (endDate.getFullYear() - startDate.getFullYear()) * 12 + 
+                     (endDate.getMonth() - startDate.getMonth()) + 1; // +1 to include both start and end months
+
+    return {
+      startDate,
+      endDate,
+      monthsCovered: Math.max(1, monthDiff), // At least 1 month
+      isPartialYear: monthDiff < 12,
+      annualizationFactor: 12 / Math.max(1, monthDiff)
+    };
+  };
+
+  // Update period detection when transactions change
+  useEffect(() => {
+    if (rawTransactions.length > 0) {
+      const period = detectStatementPeriod(rawTransactions);
+      setStatementPeriod(period);
+      setIsProjectedIncome(period?.isPartialYear || false);
+    }
+  }, [rawTransactions]);
+
+  const calculateAnnualAmount = (amount, period, useProjection = true) => {
     if (!amount) return 0;
-    const multipliers = { daily: 365, weekly: 52, monthly: 12, annually: 1 };
-    return amount * (multipliers[period] || 1);
+    
+    // Handle different period types
+    const basePeriodMultipliers = { 
+      daily: 365, 
+      weekly: 52, 
+      monthly: 12, 
+      annually: 1 
+    };
+    
+    let baseAnnual = amount * (basePeriodMultipliers[period] || 1);
+    
+    // If we have statement period info and it's partial year data, apply annualization
+    if (useProjection && statementPeriod?.isPartialYear && period === 'monthly') {
+      baseAnnual = amount * statementPeriod.annualizationFactor;
+    }
+    
+    return baseAnnual;
   };
 
   // Calculate totals
@@ -412,16 +483,16 @@ const SATaxCalculator = () => {
     
     logMessage('debug', 'transaction-parse', `Text split into ${lines.length} lines`);
     
-    // Updated regex patterns for Standard Bank format
+    // Updated regex patterns for Standard Bank format - more robust amount detection
     const patterns = {
-      // Standard Bank format: "02 Dec   DESCRIPTION   - type   - amount   balance"
-      standardBank: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+-\s*([\d\s,.]+)\s+([\d\s,.]+)$/,
       // Standard Bank credit format: "02 Dec   DESCRIPTION   - type   + amount   balance"  
-      standardBankCredit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+\+\s*([\d\s,.]+)\s+([\d\s,.]+)$/,
-      // Alternative Standard Bank format with more spaces
-      standardBankAlt: /(\d{2}\s+\w{3})\s+(.+?)\s+([+-])\s*([\d\s,.]+)\s+([\d\s,.]+)$/,
+      standardBankCredit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+\+\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
+      // Standard Bank debit format: "02 Dec   DESCRIPTION   - type   - amount   balance"
+      standardBankDebit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+-\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
+      // Alternative format with explicit +/- signs
+      alternativeFormat: /(\d{2}\s+\w{3})\s+(.+?)\s+([+-])\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
       // Generic pattern for any date format
-      genericTransaction: /(\d{1,2}\s+\w{3}|\d{1,2}[\/\-]\d{1,2})\s+(.+?)\s+([+-])\s*([\d\s,.]+)\s+([\d\s,.]+)$/
+      genericTransaction: /(\d{1,2}\s+\w{3}|\d{1,2}[\/\-]\d{1,2})\s+(.+?)\s+([+-])\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/
     };
     
     let matchCounts = {};
@@ -464,26 +535,30 @@ const SATaxCalculator = () => {
           try {
             let date, description, transactionType, amount, balance, isCredit = false;
             
-            if (patternName === 'standardBank') {
-              [, date, description, transactionType, amount, balance] = match;
-              isCredit = false;
-            } else if (patternName === 'standardBankCredit') {
+            if (patternName === 'standardBankCredit') {
               [, date, description, transactionType, amount, balance] = match;
               isCredit = true;
+            } else if (patternName === 'standardBankDebit') {
+              [, date, description, transactionType, amount, balance] = match;
+              isCredit = false;
+            } else if (patternName === 'alternativeFormat') {
+              [, date, description, sign, amount, balance] = match;
+              isCredit = sign === '+';
+              transactionType = isCredit ? 'credit' : 'debit';
             } else {
               [, date, description, sign, amount, balance] = match;
               isCredit = sign === '+';
               transactionType = isCredit ? 'credit' : 'debit';
             }
             
-            // Clean and parse amounts - handle spaces in numbers
-            const cleanAmount = amount.replace(/\s/g, '').replace(/[^\d.]/g, '');
-            const cleanBalance = balance ? balance.replace(/\s/g, '').replace(/[^\d.-]/g, '') : '0';
+            // More robust amount cleaning - handle spaces, commas, and various formats
+            const cleanAmount = amount.replace(/\s/g, '').replace(/,/g, '').replace(/[^\d.-]/g, '');
+            const cleanBalance = balance ? balance.replace(/\s/g, '').replace(/,/g, '').replace(/[^\d.-]/g, '') : '0';
             
             const numAmount = parseFloat(cleanAmount);
             const numBalance = parseFloat(cleanBalance);
             
-            if (!isNaN(numAmount) && numAmount > 1) {
+            if (!isNaN(numAmount) && numAmount > 0) {
               const finalAmount = isCredit ? numAmount : -numAmount;
               
               const transaction = {
@@ -504,7 +579,9 @@ const SATaxCalculator = () => {
               if (debugMode && transactions.length <= 10) {
                 logMessage('debug', 'transaction-parse', `Transaction extracted (${patternName})`, {
                   transaction,
-                  originalLine: line
+                  originalLine: line,
+                  cleanedAmount: cleanAmount,
+                  finalAmount: finalAmount
                 });
               }
             } else {
@@ -623,7 +700,7 @@ const SATaxCalculator = () => {
             id: Date.now() + Math.random(),
             description: rule.source,
             amount: Math.abs(transaction.amount),
-            period: 'monthly',
+            period: 'actual', // This is the actual amount from statements, not monthly
             source: rule.category,
             dataSource: 'auto-detected',
             confidence: 0.95,
@@ -659,7 +736,7 @@ const SATaxCalculator = () => {
             id: Date.now() + Math.random(),
             description: rule.description,
             amount: Math.abs(transaction.amount),
-            period: 'monthly',
+            period: 'actual', // This is the actual amount from statements
             category: rule.category,
             dataSource: 'auto-detected',
             confidence: 0.95,
@@ -695,7 +772,7 @@ const SATaxCalculator = () => {
             id: Date.now() + Math.random(),
             description: rule.description,
             amount: Math.abs(transaction.amount),
-            period: 'monthly',
+            period: 'actual', // This is the actual amount from statements
             category: rule.category,
             dataSource: 'auto-detected',
             confidence: 0.95,
@@ -854,7 +931,7 @@ const SATaxCalculator = () => {
       id: Date.now() + Math.random(),
       description: transaction.originalDescription,
       amount: Math.abs(transaction.amount),
-      period: 'monthly',
+      period: 'actual', // This is the actual amount from statements
       dataSource: 'moved-from-uncategorized',
       confidence: 0.5,
       sourceTransactions: [transaction],
@@ -902,7 +979,7 @@ const SATaxCalculator = () => {
       id: Date.now() + Math.random(),
       description: transaction.originalDescription,
       amount: Math.abs(transaction.amount),
-      period: 'monthly',
+      period: 'actual', // This is the actual amount from statements
       source: selectedType,
       dataSource: 'manual-categorized',
       confidence: 1.0,
@@ -942,7 +1019,7 @@ const SATaxCalculator = () => {
       id: Date.now() + Math.random(),
       description: transaction.originalDescription,
       amount: Math.abs(transaction.amount),
-      period: 'monthly',
+      period: 'actual', // This is the actual amount from statements
       category: selectedType,
       dataSource: 'manual-categorized',
       confidence: 1.0,
@@ -964,7 +1041,7 @@ const SATaxCalculator = () => {
       id: Date.now() + Math.random(),
       description: transaction.originalDescription,
       amount: Math.abs(transaction.amount),
-      period: 'monthly',
+      period: 'actual', // This is the actual amount from statements
       category: 'Personal',
       dataSource: 'manual-categorized',
       confidence: 1.0,
@@ -1027,7 +1104,7 @@ const SATaxCalculator = () => {
           id: Date.now() + Math.random(),
           description: transaction.originalDescription,
           amount: Math.abs(transaction.amount),
-          period: 'monthly',
+          period: 'actual', // This is the actual amount from statements
           category: 'Software',
           dataSource: 'auto-categorized-similar',
           confidence: 0.7,
@@ -1283,16 +1360,48 @@ const SATaxCalculator = () => {
         {/* Tab Content */}
         {activeTab === 'overview' && (
           <div className="space-y-6">
+            {/* Period Information */}
+            {statementPeriod && (
+              <div className={`bg-white rounded-lg shadow-lg p-4 border-l-4 ${
+                statementPeriod.isPartialYear ? 'border-orange-500' : 'border-green-500'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-800">📅 Statement Period Analysis</h4>
+                    <p className="text-sm text-gray-600">
+                      Data covers: {statementPeriod.startDate.toLocaleDateString()} - {statementPeriod.endDate.toLocaleDateString()} 
+                      ({statementPeriod.monthsCovered} month{statementPeriod.monthsCovered !== 1 ? 's' : ''})
+                    </p>
+                  </div>
+                  {statementPeriod.isPartialYear && (
+                    <div className="text-right">
+                      <div className="text-orange-600 font-medium">⚠️ PROJECTED ANNUAL FIGURES</div>
+                      <div className="text-sm text-gray-600">
+                        Actual amounts multiplied by {statementPeriod.annualizationFactor.toFixed(1)}x for annual projection
+                      </div>
+                      <div className="text-xs text-orange-600 mt-1">
+                        ⚡ For provisional tax: pay on projected amounts, reconcile at year-end
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Annual Income</p>
+                    <p className="text-sm text-gray-600">Annual Income {isProjectedIncome ? '(Projected)' : ''}</p>
                     <p className="text-2xl font-bold text-green-600">
                       {formatCurrency(totalAnnualIncome)}
+                      {isProjectedIncome && <span className="text-sm text-orange-600 ml-1">*</span>}
                     </p>
-                    <p className="text-xs text-gray-500">{incomeEntries.length} sources</p>
+                    <p className="text-xs text-gray-500">
+                      {incomeEntries.length} sources
+                      {isProjectedIncome && ` • Based on ${statementPeriod?.monthsCovered} months`}
+                    </p>
                   </div>
                   <DollarSign className="text-green-600" size={32} />
                 </div>
@@ -1301,11 +1410,15 @@ const SATaxCalculator = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Deductible Expenses</p>
+                    <p className="text-sm text-gray-600">Deductible Expenses {isProjectedIncome ? '(Projected)' : ''}</p>
                     <p className="text-2xl font-bold text-blue-600">
                       {formatCurrency(totalDeductibleExpenses)}
+                      {isProjectedIncome && <span className="text-sm text-orange-600 ml-1">*</span>}
                     </p>
-                    <p className="text-xs text-gray-500">{businessExpenses.filter(e => !e.isExcluded).length} items</p>
+                    <p className="text-xs text-gray-500">
+                      {businessExpenses.filter(e => !e.isExcluded).length} items
+                      {isProjectedIncome && ` • Based on ${statementPeriod?.monthsCovered} months`}
+                    </p>
                   </div>
                   <CheckCircle className="text-blue-600" size={32} />
                 </div>
@@ -1314,9 +1427,10 @@ const SATaxCalculator = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Taxable Income</p>
+                    <p className="text-sm text-gray-600">Taxable Income {isProjectedIncome ? '(Projected)' : ''}</p>
                     <p className="text-2xl font-bold text-orange-600">
                       {formatCurrency(taxableIncome)}
+                      {isProjectedIncome && <span className="text-sm text-orange-600 ml-1">*</span>}
                     </p>
                     <p className="text-xs text-gray-500">Effective: {taxCalculation.effectiveRate.toFixed(1)}%</p>
                   </div>
@@ -1327,9 +1441,10 @@ const SATaxCalculator = () => {
               <div className="bg-white rounded-lg shadow p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600">Annual Tax</p>
+                    <p className="text-sm text-gray-600">Annual Tax {isProjectedIncome ? '(Projected)' : ''}</p>
                     <p className="text-2xl font-bold text-red-600">
                       {formatCurrency(taxCalculation.tax)}
+                      {isProjectedIncome && <span className="text-sm text-orange-600 ml-1">*</span>}
                     </p>
                     <p className="text-xs text-gray-500">Monthly: {formatCurrency(monthlyTaxRequired)}</p>
                   </div>
@@ -1337,6 +1452,32 @@ const SATaxCalculator = () => {
                 </div>
               </div>
             </div>
+
+            {/* Provisional Tax Notice */}
+            {isProjectedIncome && (
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-6">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="text-orange-600 mt-1" size={24} />
+                  <div>
+                    <h4 className="font-semibold text-orange-800 mb-2">📊 Provisional Tax Calculation Notice</h4>
+                    <div className="text-orange-700 text-sm space-y-2">
+                      <p>
+                        <strong>Your figures are PROJECTED:</strong> Based on {statementPeriod?.monthsCovered} months of actual data, 
+                        extrapolated to a full year by multiplying by {statementPeriod?.annualizationFactor.toFixed(1)}x.
+                      </p>
+                      <p>
+                        <strong>For Provisional Tax:</strong> Use these projected amounts to calculate your required payments. 
+                        SARS expects you to pay tax on your estimated annual income twice per year.
+                      </p>
+                      <p>
+                        <strong>Year-end reconciliation:</strong> When you file your annual return with complete data, 
+                        any overpayment will be refunded or underpayment will be due.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Upload Section for New Users */}
             {incomeEntries.length === 0 && businessExpenses.length === 0 && personalExpenses.length === 0 && uploadedFiles.length === 0 && (
@@ -1427,12 +1568,38 @@ const SATaxCalculator = () => {
         {/* Income Tab */}
         {activeTab === 'income' && (
           <div className="space-y-6">
+            {/* Period Information */}
+            {statementPeriod && (
+              <div className={`bg-white rounded-lg shadow-lg p-4 border-l-4 ${
+                statementPeriod.isPartialYear ? 'border-orange-500' : 'border-green-500'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-800">Statement Period Information</h4>
+                    <p className="text-sm text-gray-600">
+                      {statementPeriod.startDate.toLocaleDateString()} - {statementPeriod.endDate.toLocaleDateString()} 
+                      ({statementPeriod.monthsCovered} month{statementPeriod.monthsCovered !== 1 ? 's' : ''} of data)
+                    </p>
+                  </div>
+                  {statementPeriod.isPartialYear && (
+                    <div className="text-right">
+                      <div className="text-orange-600 font-medium text-sm">⚠️ PROJECTED ANNUAL</div>
+                      <div className="text-xs text-gray-500">
+                        Multiplied by {statementPeriod.annualizationFactor.toFixed(1)}x
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-lg shadow-lg p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-xl font-semibold text-green-700">Income Sources</h3>
                   <p className="text-sm text-gray-600">
-                    {incomeEntries.length} sources • {formatCurrency(totalAnnualIncome)} annual total
+                    {incomeEntries.length} sources • {formatCurrency(totalAnnualIncome)} 
+                    {isProjectedIncome ? ' projected annual' : ' annual'} total
                   </p>
                 </div>
                 <div className="flex space-x-3">
@@ -1469,7 +1636,7 @@ const SATaxCalculator = () => {
                     <div key={entry.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
                       {editMode && editingEntry?.type === 'income' && editingEntry?.id === entry.id ? (
                         <div className="space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <input
                               type="text"
                               value={entry.description}
@@ -1485,6 +1652,15 @@ const SATaxCalculator = () => {
                               className="p-2 border border-gray-300 rounded"
                               placeholder="Amount"
                             />
+                            <select
+                              value={entry.period}
+                              onChange={(e) => updateIncomeEntry(entry.id, 'period', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                            >
+                              <option value="actual">Actual Amount</option>
+                              <option value="monthly">Monthly</option>
+                              <option value="annually">Annual</option>
+                            </select>
                             <select
                               value={entry.source}
                               onChange={(e) => updateIncomeEntry(entry.id, 'source', e.target.value)}
@@ -1537,9 +1713,23 @@ const SATaxCalculator = () => {
                           <div className="text-right">
                             <div className="text-xl font-bold text-green-600">
                               {formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
+                              {entry.period === 'actual' && isProjectedIncome && (
+                                <span className="text-xs text-orange-600 ml-1">*</span>
+                              )}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {formatCurrency(entry.amount)} {entry.period}
+                              {entry.period === 'actual' ? (
+                                <>
+                                  {formatCurrency(entry.amount)} actual
+                                  {isProjectedIncome && (
+                                    <div className="text-xs text-orange-600">
+                                      *Projected from {statementPeriod?.monthsCovered} months
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                `${formatCurrency(entry.amount)} ${entry.period}`
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1576,13 +1766,39 @@ const SATaxCalculator = () => {
         {/* Expenses Tab */}
         {activeTab === 'expenses' && (
           <div className="space-y-6">
+            {/* Period Information */}
+            {statementPeriod && (
+              <div className={`bg-white rounded-lg shadow-lg p-4 border-l-4 ${
+                statementPeriod.isPartialYear ? 'border-orange-500' : 'border-green-500'
+              }`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-800">Statement Period Information</h4>
+                    <p className="text-sm text-gray-600">
+                      {statementPeriod.startDate.toLocaleDateString()} - {statementPeriod.endDate.toLocaleDateString()} 
+                      ({statementPeriod.monthsCovered} month{statementPeriod.monthsCovered !== 1 ? 's' : ''} of data)
+                    </p>
+                  </div>
+                  {statementPeriod.isPartialYear && (
+                    <div className="text-right">
+                      <div className="text-orange-600 font-medium text-sm">⚠️ PROJECTED ANNUAL</div>
+                      <div className="text-xs text-gray-500">
+                        Multiplied by {statementPeriod.annualizationFactor.toFixed(1)}x
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Business Expenses */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h3 className="text-xl font-semibold text-blue-700">Business Expenses (Deductible)</h3>
                   <p className="text-sm text-gray-600">
-                    {businessExpenses.filter(e => !e.isExcluded).length} deductible items • {formatCurrency(totalDeductibleExpenses)} annual total
+                    {businessExpenses.filter(e => !e.isExcluded).length} deductible items • {formatCurrency(totalDeductibleExpenses)} 
+                    {isProjectedIncome ? ' projected annual' : ' annual'} total
                   </p>
                 </div>
                 <div className="flex space-x-3">
@@ -1621,7 +1837,7 @@ const SATaxCalculator = () => {
                     }`}>
                       {editMode && editingEntry?.type === 'expense' && editingEntry?.id === expense.id ? (
                         <div className="space-y-3">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                             <input
                               type="text"
                               value={expense.description}
@@ -1637,6 +1853,15 @@ const SATaxCalculator = () => {
                               className="p-2 border border-gray-300 rounded"
                               placeholder="Amount"
                             />
+                            <select
+                              value={expense.period}
+                              onChange={(e) => updateExpenseEntry(expense.id, 'period', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                            >
+                              <option value="actual">Actual Amount</option>
+                              <option value="monthly">Monthly</option>
+                              <option value="annually">Annual</option>
+                            </select>
                             <select
                               value={expense.category}
                               onChange={(e) => updateExpenseEntry(expense.id, 'category', e.target.value)}
@@ -1702,9 +1927,23 @@ const SATaxCalculator = () => {
                           <div className="text-right">
                             <div className={`text-xl font-bold ${expense.isExcluded ? 'text-red-600 line-through' : 'text-blue-600'}`}>
                               {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                              {expense.period === 'actual' && isProjectedIncome && !expense.isExcluded && (
+                                <span className="text-xs text-orange-600 ml-1">*</span>
+                              )}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {formatCurrency(expense.amount)} {expense.period}
+                              {expense.period === 'actual' ? (
+                                <>
+                                  {formatCurrency(expense.amount)} actual
+                                  {isProjectedIncome && !expense.isExcluded && (
+                                    <div className="text-xs text-orange-600">
+                                      *Projected from {statementPeriod?.monthsCovered} months
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                `${formatCurrency(expense.amount)} ${expense.period}`
+                              )}
                             </div>
                           </div>
                         </div>
