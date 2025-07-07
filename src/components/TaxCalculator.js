@@ -1116,194 +1116,68 @@ const SATaxCalculator = () => {
     );
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-800 mb-2">SA Provisional Tax Calculator with Smart Categorization</h1>
-          <p className="text-gray-600">Intelligent PDF analysis with provisional tax compliance for self-employed professionals</p>
-          <div className="mt-2 flex justify-center space-x-4">
-            <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm ${
-              pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
-            }`}>
-              <CheckCircle className="mr-1" size={16} />
-              PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
-            </span>
-            {uploadedFiles.length > 0 && (
-              <span className="inline-flex items-center px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
-                <FileText className="mr-1" size={16} />
-                {uploadedFiles.length} files processed
-              </span>
-            )}
-            <span className="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm">
-              <Calculator className="mr-1" size={16} />
-              Provisional Tax Optimized
-            </span>
-            {debugMode && (
-              <span className="inline-flex items-center px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                <AlertCircle className="mr-1" size={16} />
-                Debug Mode Active
-              </span>
-            )}
-          </div>
-        </div>
+  // Tab navigation
+  const tabs = [
+    { id: 'overview', name: 'Overview', icon: TrendingUp },
+    { id: 'income', name: 'Income', icon: DollarSign },
+    { id: 'expenses', name: 'Expenses', icon: CheckCircle },
+    { id: 'review', name: 'Review', icon: AlertCircle, count: uncategorizedTransactions.length },
+    { id: 'settings', name: 'Settings', icon: Settings }
+  ];
 
-        {/* Controls Panel */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold flex items-center">
-              <Settings className="mr-2" size={20} />
-              Controls & Settings
-            </h2>
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      {/* Header */}
+      <div className="bg-white shadow-sm border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-800">SA Tax Calculator</h1>
+              <p className="text-sm text-gray-600">Smart categorization for provisional tax payers</p>
+            </div>
+            
+            {/* Quick Stats */}
+            <div className="flex items-center space-x-6">
+              <div className="text-right">
+                <div className="text-sm text-gray-600">Annual Income</div>
+                <div className="text-lg font-bold text-green-600">{formatCurrency(totalAnnualIncome)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600">Tax Due</div>
+                <div className="text-lg font-bold text-red-600">{formatCurrency(taxCalculation.tax)}</div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-gray-600">Effective Rate</div>
+                <div className="text-lg font-bold text-orange-600">{taxCalculation.effectiveRate.toFixed(1)}%</div>
+              </div>
+            </div>
+            
+            {/* Status Indicators */}
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setDebugMode(!debugMode)}
-                className={`flex items-center px-3 py-2 rounded-lg font-medium ${
-                  debugMode ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
-                <AlertCircle className="mr-1" size={16} />
-                Debug {debugMode ? 'ON' : 'OFF'}
-              </button>
-              
-              {processingLogs.length > 0 && (
-                <>
-                  <button
-                    onClick={() => setShowLogs(!showLogs)}
-                    className={`flex items-center px-3 py-2 rounded-lg font-medium ${
-                      showLogs ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    <FileText className="mr-1" size={16} />
-                    Logs ({processingLogs.length})
-                  </button>
-                  
-                  <button
-                    onClick={downloadLogs}
-                    className="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-                  >
-                    <Download className="mr-1" size={16} />
-                    Export Logs
-                  </button>
-                  
-                  <button
-                    onClick={clearLogs}
-                    className="flex items-center px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
-                  >
-                    <Trash className="mr-1" size={16} />
-                    Clear Logs
-                  </button>
-                </>
+              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
+              }`}>
+                <CheckCircle className="mr-1" size={12} />
+                PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
+              </span>
+              {uploadedFiles.length > 0 && (
+                <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                  <FileText className="mr-1" size={12} />
+                  {uploadedFiles.length} files
+                </span>
               )}
-              
-              <button
-                onClick={() => setEditMode(!editMode)}
-                className={`flex items-center px-3 py-2 rounded-lg font-medium ${
-                  editMode ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
-                } hover:opacity-90`}
-              >
-                {editMode ? <Save className="mr-1" size={16} /> : <Edit2 className="mr-1" size={16} />}
-                {editMode ? 'Save Changes' : 'Edit Mode'}
-              </button>
-              
-              <button
-                onClick={() => setShowTransactionDetails(!showTransactionDetails)}
-                className={`flex items-center px-3 py-2 rounded-lg font-medium ${
-                  showTransactionDetails ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-                }`}
-              >
-                {showTransactionDetails ? <EyeOff className="mr-1" size={16} /> : <Eye className="mr-1" size={16} />}
-                Details
-              </button>
-              
-              <button
-                onClick={exportToCSV}
-                className="flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-              >
-                <Download className="mr-1" size={16} />
-                CSV
-              </button>
-              
-              <button
-                onClick={exportToPDF}
-                className="flex items-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                <FileText className="mr-1" size={16} />
-                PDF
-              </button>
-              
-              {(rawTransactions.length > 0 || incomeEntries.length > 0 || businessExpenses.length > 0) && (
-                <button
-                  onClick={clearAllData}
-                  className="flex items-center px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  <Trash className="mr-1" size={16} />
-                  Clear
-                </button>
+              {debugMode && (
+                <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs">
+                  <AlertCircle className="mr-1" size={12} />
+                  Debug
+                </span>
               )}
             </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Tax Year</label>
-              <select
-                value={selectedTaxYear}
-                onChange={(e) => setSelectedTaxYear(parseInt(e.target.value))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                {Object.keys(taxBracketsData).map(year => (
-                  <option key={year} value={year}>
-                    {year} Tax Year
-                  </option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Age Category</label>
-              <select
-                value={userAge}
-                onChange={(e) => setUserAge(e.target.value)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="under65">Under 65</option>
-                <option value="under75">65 - 74</option>
-                <option value="over75">75 and older</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Home Office %</label>
-              <input
-                type="number"
-                step="0.1"
-                value={homeOfficePercentage}
-                onChange={(e) => setHomeOfficePercentage(parseFloat(e.target.value) || 0)}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">PDF Upload</label>
-              <label className={`w-full p-2 ${pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'} text-white rounded-lg cursor-pointer flex items-center justify-center`}>
-                <Upload className="mr-2" size={16} />
-                Upload PDFs
-                <input
-                  type="file"
-                  accept=".pdf"
-                  multiple
-                  onChange={handleFileUpload}
-                  className="hidden"
-                  disabled={isProcessing || !pdfJsLoaded}
-                />
-              </label>
-            </div>
-          </div>
-          
+          {/* Processing Status */}
           {processingStatus && (
-            <div className="mt-4 flex items-center space-x-2">
+            <div className="mt-3 flex items-center space-x-2">
               {isProcessing && <RefreshCw className="animate-spin" size={16} />}
               <span className={`text-sm ${isProcessing ? 'text-blue-600' : processingStatus.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
                 {processingStatus}
@@ -1311,542 +1185,876 @@ const SATaxCalculator = () => {
             </div>
           )}
         </div>
+      </div>
 
-        {/* Comprehensive Logging Viewer */}
-        {showLogs && processingLogs.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-purple-700">
-                🔍 Processing Logs & Debug Information
-              </h3>
-              <div className="flex space-x-2 text-sm">
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                  {processingLogs.filter(log => log.level === 'info').length} Info
-                </span>
-                <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
-                  {processingLogs.filter(log => log.level === 'warn').length} Warnings
-                </span>
-                <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
-                  {processingLogs.filter(log => log.level === 'error').length} Errors
-                </span>
-                <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded">
-                  {processingLogs.filter(log => log.level === 'debug').length} Debug
-                </span>
+      {/* Tab Navigation */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4">
+          <nav className="flex space-x-8" aria-label="Tabs">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`${
+                    activeTab === tab.id
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center space-x-2`}
+                >
+                  <Icon size={16} />
+                  <span>{tab.name}</span>
+                  {tab.count > 0 && (
+                    <span className="bg-red-100 text-red-800 text-xs rounded-full px-2 py-1 min-w-[20px] text-center">
+                      {tab.count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto p-4">
+        {/* Tab Content */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Annual Income</p>
+                    <p className="text-2xl font-bold text-green-600">
+                      {formatCurrency(totalAnnualIncome)}
+                    </p>
+                    <p className="text-xs text-gray-500">{incomeEntries.length} sources</p>
+                  </div>
+                  <DollarSign className="text-green-600" size={32} />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Deductible Expenses</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {formatCurrency(totalDeductibleExpenses)}
+                    </p>
+                    <p className="text-xs text-gray-500">{businessExpenses.filter(e => !e.isExcluded).length} items</p>
+                  </div>
+                  <CheckCircle className="text-blue-600" size={32} />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Taxable Income</p>
+                    <p className="text-2xl font-bold text-orange-600">
+                      {formatCurrency(taxableIncome)}
+                    </p>
+                    <p className="text-xs text-gray-500">Effective: {taxCalculation.effectiveRate.toFixed(1)}%</p>
+                  </div>
+                  <TrendingUp className="text-orange-600" size={32} />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg shadow p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-gray-600">Annual Tax</p>
+                    <p className="text-2xl font-bold text-red-600">
+                      {formatCurrency(taxCalculation.tax)}
+                    </p>
+                    <p className="text-xs text-gray-500">Monthly: {formatCurrency(monthlyTaxRequired)}</p>
+                  </div>
+                  <Calculator className="text-red-600" size={32} />
+                </div>
               </div>
             </div>
-            
-            {/* Log Categories */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-              {/* Processing Summary */}
-              <div className="bg-gray-50 rounded-lg p-4">
-                <h4 className="font-semibold mb-3 text-gray-800">Processing Summary</h4>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Files Processed:</span>
-                    <span className="font-medium">{uploadedFiles.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Total Text Extracted:</span>
-                    <span className="font-medium">
-                      {extractedTexts.reduce((sum, file) => sum + file.totalTextLength, 0).toLocaleString()} chars
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Transactions Found:</span>
-                    <span className="font-medium">{rawTransactions.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Income Items:</span>
-                    <span className="font-medium text-green-600">{incomeEntries.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Business Expenses:</span>
-                    <span className="font-medium text-blue-600">{businessExpenses.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Personal Expenses:</span>
-                    <span className="font-medium text-gray-600">{personalExpenses.length}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Uncategorized:</span>
-                    <span className="font-medium text-orange-600">{uncategorizedTransactions.length}</span>
-                  </div>
+
+            {/* Upload Section for New Users */}
+            {incomeEntries.length === 0 && businessExpenses.length === 0 && personalExpenses.length === 0 && uploadedFiles.length === 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+                <div className="flex items-center justify-center mb-6">
+                  <FileUp className="text-blue-600" size={64} />
+                </div>
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">Get Started with Your Tax Calculation</h3>
+                <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
+                  Upload your bank statement PDFs for intelligent transaction categorization optimized for provisional tax payers. 
+                  Automatically identifies business income and expenses while excluding personal items.
+                </p>
+                
+                <label className={`inline-flex items-center px-6 py-3 ${
+                  pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
+                } text-white rounded-lg cursor-pointer text-lg`}>
+                  <Upload className="mr-2" size={20} />
+                  Upload Bank Statement PDFs
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    disabled={isProcessing || !pdfJsLoaded}
+                  />
+                </label>
+                
+                <div className="mt-6">
+                  <p className="text-sm text-gray-500">
+                    Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
+                    Automatically applies {homeOfficePercentage}% home office deduction
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* File Processing Status */}
+            {uploadedFiles.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h3 className="text-lg font-semibold text-blue-700 mb-4">
+                  📁 Processed Files ({uploadedFiles.length})
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {uploadedFiles.map((file, index) => (
+                    <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="font-medium text-sm truncate">{file.name}</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        {file.transactionCount} transactions • {file.pageCount} pages
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {file.processedAt.toLocaleString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Income Tab */}
+        {activeTab === 'income' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-green-700">Income Sources</h3>
+                  <p className="text-sm text-gray-600">
+                    {incomeEntries.length} sources • {formatCurrency(totalAnnualIncome)} annual total
+                  </p>
+                </div>
+                <div className="flex space-x-3">
+                  {editMode && (
+                    <button
+                      onClick={addIncomeEntry}
+                      className="flex items-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                    >
+                      <Plus className="mr-2" size={16} />
+                      Add Income
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setEditMode(!editMode)}
+                    className={`flex items-center px-4 py-2 rounded-lg font-medium ${
+                      editMode ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
+                    } hover:opacity-90`}
+                  >
+                    {editMode ? <Save className="mr-2" size={16} /> : <Edit2 className="mr-2" size={16} />}
+                    {editMode ? 'Save Changes' : 'Edit Mode'}
+                  </button>
                 </div>
               </div>
               
-              {/* Extracted Text Preview */}
-              {extractedTexts.length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="font-semibold mb-3 text-gray-800">Extracted Text Preview</h4>
-                  <div className="space-y-3">
-                    {extractedTexts.slice(0, 2).map((file, index) => (
-                      <div key={index} className="bg-white rounded p-3 border">
-                        <div className="font-medium text-sm mb-2">{file.fileName}</div>
-                        <div className="text-xs text-gray-600 mb-2">
-                          {file.pageCount} pages • {file.totalTextLength.toLocaleString()} characters
+              <div className="space-y-4">
+                {incomeEntries.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <DollarSign className="mx-auto mb-4" size={48} />
+                    <p className="text-lg font-medium">No income sources found</p>
+                    <p className="text-sm">Upload bank statements or add income manually</p>
+                  </div>
+                ) : (
+                  incomeEntries.map((entry) => (
+                    <div key={entry.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
+                      {editMode && editingEntry?.type === 'income' && editingEntry?.id === entry.id ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                              type="text"
+                              value={entry.description}
+                              onChange={(e) => updateIncomeEntry(entry.id, 'description', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                              placeholder="Description"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={entry.amount}
+                              onChange={(e) => updateIncomeEntry(entry.id, 'amount', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                              placeholder="Amount"
+                            />
+                            <select
+                              value={entry.source}
+                              onChange={(e) => updateIncomeEntry(entry.id, 'source', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                            >
+                              {incomeCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <input
+                            type="text"
+                            value={entry.notes || ''}
+                            onChange={(e) => updateIncomeEntry(entry.id, 'notes', e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded"
+                            placeholder="Notes"
+                          />
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => setEditingEntry(null)}
+                              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => deleteIncomeEntry(entry.id)}
+                              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-xs bg-gray-100 p-2 rounded max-h-32 overflow-y-auto font-mono">
-                          {file.allText.substring(0, 500)}...
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            {getDataSourceBadge(entry.dataSource, entry.confidence, false)}
+                            <div>
+                              <div className="font-medium text-lg">{entry.description}</div>
+                              <div className="text-sm text-gray-600">{entry.source}</div>
+                            </div>
+                            {editMode && (
+                              <button
+                                onClick={() => setEditingEntry({ type: 'income', id: entry.id })}
+                                className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <div className="text-xl font-bold text-green-600">
+                              {formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {formatCurrency(entry.amount)} {entry.period}
+                            </div>
+                          </div>
                         </div>
+                      )}
+                      
+                      {entry.notes && !editMode && (
+                        <div className="mt-2 text-sm text-gray-600">💡 {entry.notes}</div>
+                      )}
+                      
+                      {showTransactionDetails && entry.sourceTransactions && (
+                        <div className="mt-3 p-3 bg-white rounded border">
+                          <div className="text-xs font-medium text-gray-600 mb-2">Source Transactions:</div>
+                          {entry.sourceTransactions.slice(0, 3).map((transaction, idx) => (
+                            <div key={idx} className="text-xs text-gray-500 flex justify-between mb-1">
+                              <span>{transaction.date}: {transaction.originalDescription.substring(0, 50)}...</span>
+                              <span>{formatCurrency(transaction.amount)}</span>
+                            </div>
+                          ))}
+                          {entry.sourceTransactions.length > 3 && (
+                            <div className="text-xs text-gray-400">
+                              ... and {entry.sourceTransactions.length - 3} more transactions
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Expenses Tab */}
+        {activeTab === 'expenses' && (
+          <div className="space-y-6">
+            {/* Business Expenses */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-blue-700">Business Expenses (Deductible)</h3>
+                  <p className="text-sm text-gray-600">
+                    {businessExpenses.filter(e => !e.isExcluded).length} deductible items • {formatCurrency(totalDeductibleExpenses)} annual total
+                  </p>
+                </div>
+                <div className="flex space-x-3">
+                  {editMode && (
+                    <button
+                      onClick={() => addExpenseEntry('business')}
+                      className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                    >
+                      <Plus className="mr-2" size={16} />
+                      Add Business Expense
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setEditMode(!editMode)}
+                    className={`flex items-center px-4 py-2 rounded-lg font-medium ${
+                      editMode ? 'bg-green-600 text-white' : 'bg-blue-600 text-white'
+                    } hover:opacity-90`}
+                  >
+                    {editMode ? <Save className="mr-2" size={16} /> : <Edit2 className="mr-2" size={16} />}
+                    {editMode ? 'Save Changes' : 'Edit Mode'}
+                  </button>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                {businessExpenses.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <CheckCircle className="mx-auto mb-4" size={48} />
+                    <p className="text-lg font-medium">No business expenses found</p>
+                    <p className="text-sm">Upload bank statements or add expenses manually</p>
+                  </div>
+                ) : (
+                  businessExpenses.map((expense) => (
+                    <div key={expense.id} className={`p-4 rounded-lg border-l-4 ${
+                      expense.isExcluded ? 'bg-red-50 border-red-500' : 'bg-gray-50 border-blue-500'
+                    }`}>
+                      {editMode && editingEntry?.type === 'expense' && editingEntry?.id === expense.id ? (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                              type="text"
+                              value={expense.description}
+                              onChange={(e) => updateExpenseEntry(expense.id, 'description', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                              placeholder="Description"
+                            />
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={expense.amount}
+                              onChange={(e) => updateExpenseEntry(expense.id, 'amount', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                              placeholder="Amount"
+                            />
+                            <select
+                              value={expense.category}
+                              onChange={(e) => updateExpenseEntry(expense.id, 'category', e.target.value)}
+                              className="p-2 border border-gray-300 rounded"
+                            >
+                              {expenseCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <input
+                            type="text"
+                            value={expense.notes || ''}
+                            onChange={(e) => updateExpenseEntry(expense.id, 'notes', e.target.value)}
+                            className="w-full p-2 border border-gray-300 rounded"
+                            placeholder="Notes"
+                          />
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => setEditingEntry(null)}
+                              className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => deleteExpenseEntry(expense.id)}
+                              className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                            >
+                              Delete
+                            </button>
+                            <button
+                              onClick={() => moveExpenseToPersonal(expense)}
+                              className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700"
+                            >
+                              Move to Personal
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center space-x-3">
+                            {getDataSourceBadge(expense.dataSource, expense.confidence, expense.isExcluded)}
+                            <div>
+                              <div className={`font-medium text-lg ${expense.isExcluded ? 'text-red-600' : 'text-gray-900'}`}>
+                                {expense.description}
+                              </div>
+                              <div className="text-sm text-gray-600">{expense.category}</div>
+                              {expense.isExcluded && (
+                                <div className="text-xs text-red-600 font-medium">
+                                  ⚠️ EXCLUDED: {expense.exclusionReason}
+                                </div>
+                              )}
+                            </div>
+                            {editMode && (
+                              <button
+                                onClick={() => setEditingEntry({ type: 'expense', id: expense.id })}
+                                className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                              >
+                                <Edit2 size={16} />
+                              </button>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <div className={`text-xl font-bold ${expense.isExcluded ? 'text-red-600 line-through' : 'text-blue-600'}`}>
+                              {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {formatCurrency(expense.amount)} {expense.period}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {expense.notes && !editMode && (
+                        <div className="mt-2 text-sm text-gray-600">💡 {expense.notes}</div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Personal Expenses */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-700">Personal Expenses (Non-Deductible)</h3>
+                  <p className="text-sm text-gray-600">
+                    {personalExpenses.length} items • {formatCurrency(totalPersonalExpenses)} annual total
+                  </p>
+                </div>
+                <div className="flex space-x-3">
+                  {editMode && (
+                    <button
+                      onClick={() => addExpenseEntry('personal')}
+                      className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    >
+                      <Plus className="mr-2" size={16} />
+                      Add Personal Expense
+                    </button>
+                  )}
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                {personalExpenses.length === 0 ? (
+                  <div className="text-center text-gray-500 py-8">
+                    <p>No personal expenses categorized</p>
+                  </div>
+                ) : (
+                  personalExpenses.map((expense) => (
+                    <div key={expense.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-gray-500">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          {getDataSourceBadge(expense.dataSource, expense.confidence, true)}
+                          <div>
+                            <div className="font-medium text-lg text-gray-600">{expense.description}</div>
+                            <div className="text-sm text-gray-500">{expense.category}</div>
+                          </div>
+                          {editMode && (
+                            <button
+                              onClick={() => moveExpenseToBusiness(expense)}
+                              className="px-2 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Move to Business
+                            </button>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-bold text-gray-600 line-through">
+                            {formatCurrency(calculateAnnualAmount(expense.amount, expense.period))}
+                          </div>
+                          <div className="text-sm text-gray-500">Not deductible</div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Review Tab */}
+        {activeTab === 'review' && (
+          <div className="space-y-6">
+            {uncategorizedTransactions.length > 0 ? (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div>
+                    <h3 className="text-xl font-semibold text-orange-700">Manual Review Required</h3>
+                    <p className="text-sm text-gray-600">
+                      {uncategorizedTransactions.length} transactions need your attention
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                  <div className="flex items-start space-x-3">
+                    <AlertCircle className="text-orange-600 mt-1" size={20} />
+                    <div>
+                      <h4 className="font-semibold text-orange-800 mb-1">Review Instructions</h4>
+                      <p className="text-orange-700 text-sm">
+                        TAKEALOT purchases require PDF invoice verification to separate business from personal items.
+                        Inter-bank payments, interest income, and bank charges are automatically excluded from calculations.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  {uncategorizedTransactions.map((transaction) => (
+                    <div key={transaction.id} className={`p-4 rounded-lg border-l-4 ${
+                      transaction.category === 'takealot-review' ? 'bg-yellow-50 border-yellow-500' : 'bg-gray-50 border-orange-500'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <div className="font-medium text-lg">{transaction.originalDescription}</div>
+                          <div className="text-sm text-gray-600 mt-1">
+                            {transaction.date} • {formatCurrency(transaction.amount)} • {transaction.type}
+                          </div>
+                          {transaction.category === 'takealot-review' && (
+                            <div className="mt-2 p-3 bg-yellow-100 rounded text-sm">
+                              <strong>⚠️ TAKEALOT PURCHASE:</strong> Review PDF invoice to identify business items (stationery, computer equipment) vs personal items (e.g., football)
+                            </div>
+                          )}
+                          {transaction.reason && (
+                            <div className="text-sm text-gray-500 mt-2">
+                              <strong>Reason:</strong> {transaction.reason}
+                            </div>
+                          )}
+                          <div className="text-xs text-gray-400 mt-1">
+                            Source: {transaction.sourceFile} (Line {transaction.lineNumber})
+                          </div>
+                        </div>
+                        
+                        <div className="flex flex-col space-y-2 ml-6">
+                          {transaction.category !== 'takealot-review' && (
+                            <>
+                              <button
+                                onClick={() => moveTransactionToCategory(transaction, 'income')}
+                                className="px-4 py-2 text-sm bg-green-200 text-green-700 rounded hover:bg-green-300"
+                                title="Move to Income"
+                              >
+                                📈 Income
+                              </button>
+                              <button
+                                onClick={() => moveTransactionToCategory(transaction, 'business')}
+                                className="px-4 py-2 text-sm bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
+                                title="Move to Business Expenses"
+                              >
+                                💼 Business
+                              </button>
+                              <button
+                                onClick={() => moveTransactionToCategory(transaction, 'personal')}
+                                className="px-4 py-2 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
+                                title="Move to Personal Expenses"
+                              >
+                                👤 Personal
+                              </button>
+                            </>
+                          )}
+                          {transaction.category === 'takealot-review' && (
+                            <div className="text-sm text-yellow-700 font-medium text-center p-2 bg-yellow-100 rounded">
+                              📋 Manual Invoice<br/>Review Required
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white rounded-lg shadow-lg p-12 text-center">
+                <CheckCircle className="mx-auto mb-4 text-green-600" size={64} />
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">All Transactions Categorized!</h3>
+                <p className="text-gray-600">
+                  Great job! All transactions have been automatically categorized or manually reviewed.
+                  You can now proceed with your tax calculations.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && (
+          <div className="space-y-6">
+            {/* Tax Settings */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">Tax Settings</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Tax Year</label>
+                  <select
+                    value={selectedTaxYear}
+                    onChange={(e) => setSelectedTaxYear(parseInt(e.target.value))}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    {Object.keys(taxBracketsData).map(year => (
+                      <option key={year} value={year}>
+                        {year} Tax Year
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Age Category</label>
+                  <select
+                    value={userAge}
+                    onChange={(e) => setUserAge(e.target.value)}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="under65">Under 65</option>
+                    <option value="under75">65 - 74</option>
+                    <option value="over75">75 and older</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Home Office Percentage</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    value={homeOfficePercentage}
+                    onChange={(e) => setHomeOfficePercentage(parseFloat(e.target.value) || 0)}
+                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Percentage of home expenses deductible for business use</p>
+                </div>
+              </div>
+            </div>
+
+            {/* File Upload */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">Document Upload</h3>
+              <div className="space-y-4">
+                <label className={`w-full p-6 ${
+                  pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
+                } text-white rounded-lg cursor-pointer flex items-center justify-center text-lg font-medium`}>
+                  <Upload className="mr-3" size={24} />
+                  Upload Bank Statement PDFs
+                  <input
+                    type="file"
+                    accept=".pdf"
+                    multiple
+                    onChange={handleFileUpload}
+                    className="hidden"
+                    disabled={isProcessing || !pdfJsLoaded}
+                  />
+                </label>
+                <p className="text-sm text-gray-600 text-center">
+                  Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec • Multiple files supported
+                </p>
+              </div>
+            </div>
+
+            {/* Debug & Export */}
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">Debug & Export</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <button
+                  onClick={() => setDebugMode(!debugMode)}
+                  className={`flex items-center justify-center px-4 py-3 rounded-lg font-medium ${
+                    debugMode ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  <AlertCircle className="mr-2" size={16} />
+                  Debug {debugMode ? 'ON' : 'OFF'}
+                </button>
+                
+                <button
+                  onClick={() => setShowTransactionDetails(!showTransactionDetails)}
+                  className={`flex items-center justify-center px-4 py-3 rounded-lg font-medium ${
+                    showTransactionDetails ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  {showTransactionDetails ? <EyeOff className="mr-2" size={16} /> : <Eye className="mr-2" size={16} />}
+                  Details
+                </button>
+                
+                <button
+                  onClick={exportToCSV}
+                  className="flex items-center justify-center px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  <Download className="mr-2" size={16} />
+                  Export CSV
+                </button>
+                
+                <button
+                  onClick={exportToPDF}
+                  className="flex items-center justify-center px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                >
+                  <FileText className="mr-2" size={16} />
+                  Export PDF
+                </button>
+              </div>
+              
+              {processingLogs.length > 0 && (
+                <div className="mt-6 space-y-3">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-medium text-gray-800">Processing Logs ({processingLogs.length})</h4>
+                    <div className="flex space-x-2 text-sm">
+                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
+                        {processingLogs.filter(log => log.level === 'info').length} Info
+                      </span>
+                      <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
+                        {processingLogs.filter(log => log.level === 'warn').length} Warnings
+                      </span>
+                      <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
+                        {processingLogs.filter(log => log.level === 'error').length} Errors
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex space-x-3">
+                    <button
+                      onClick={() => setShowLogs(!showLogs)}
+                      className={`flex items-center px-3 py-2 rounded-lg font-medium ${
+                        showLogs ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                      }`}
+                    >
+                      <FileText className="mr-1" size={16} />
+                      {showLogs ? 'Hide' : 'Show'} Logs
+                    </button>
+                    
+                    <button
+                      onClick={downloadLogs}
+                      className="flex items-center px-3 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                    >
+                      <Download className="mr-1" size={16} />
+                      Download Logs
+                    </button>
+                    
+                    <button
+                      onClick={clearLogs}
+                      className="flex items-center px-3 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+                    >
+                      <Trash className="mr-1" size={16} />
+                      Clear Logs
+                    </button>
+                  </div>
+                </div>
+              )}
+              
+              {(rawTransactions.length > 0 || incomeEntries.length > 0 || businessExpenses.length > 0) && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <button
+                    onClick={clearAllData}
+                    className="flex items-center px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                  >
+                    <Trash className="mr-2" size={16} />
+                    Clear All Data
+                  </button>
+                  <p className="text-xs text-gray-500 mt-2">This will remove all uploaded data and calculations</p>
+                </div>
+              )}
+            </div>
+
+            {/* Comprehensive Logging Viewer */}
+            {showLogs && processingLogs.length > 0 && (
+              <div className="bg-white rounded-lg shadow-lg p-6">
+                <h3 className="text-lg font-semibold text-purple-700 mb-4">
+                  🔍 Processing Logs & Debug Information
+                </h3>
+                
+                {/* Processing Summary */}
+                <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                  <h4 className="font-semibold mb-3 text-gray-800">Processing Summary</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div className="flex justify-between">
+                      <span>Files Processed:</span>
+                      <span className="font-medium">{uploadedFiles.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Transactions Found:</span>
+                      <span className="font-medium">{rawTransactions.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Income Items:</span>
+                      <span className="font-medium text-green-600">{incomeEntries.length}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Business Expenses:</span>
+                      <span className="font-medium text-blue-600">{businessExpenses.length}</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Detailed Logs */}
+                <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                  <div className="bg-gray-800 text-white p-3 font-mono text-sm">
+                    <div className="font-semibold mb-2">📋 Detailed Processing Logs</div>
+                    {processingLogs.slice(-50).map((log) => (
+                      <div key={log.id} className={`mb-2 p-2 rounded ${
+                        log.level === 'error' ? 'bg-red-900' :
+                        log.level === 'warn' ? 'bg-orange-900' :
+                        log.level === 'info' ? 'bg-blue-900' :
+                        'bg-gray-700'
+                      }`}>
+                        <div className="flex items-start space-x-2">
+                          <span className="text-gray-300 text-xs">
+                            {new Date(log.timestamp).toLocaleTimeString()}
+                          </span>
+                          <span className={`text-xs px-1 rounded ${
+                            log.level === 'error' ? 'bg-red-600' :
+                            log.level === 'warn' ? 'bg-orange-600' :
+                            log.level === 'info' ? 'bg-blue-600' :
+                            'bg-gray-600'
+                          }`}>
+                            {log.level.toUpperCase()}
+                          </span>
+                          <span className="text-xs text-purple-300">[{log.category}]</span>
+                        </div>
+                        <div className="mt-1 text-white">{log.message}</div>
+                        {log.data && (
+                          <details className="mt-2">
+                            <summary className="text-gray-300 text-xs cursor-pointer hover:text-white">
+                              📊 View Data
+                            </summary>
+                            <pre className="mt-1 text-xs bg-gray-900 p-2 rounded overflow-x-auto text-gray-300">
+                              {JSON.stringify(log.data, null, 2)}
+                            </pre>
+                          </details>
+                        )}
                       </div>
                     ))}
                   </div>
                 </div>
-              )}
-            </div>
-            
-            {/* Detailed Logs */}
-            <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
-              <div className="bg-gray-800 text-white p-3 font-mono text-sm">
-                <div className="font-semibold mb-2">📋 Detailed Processing Logs</div>
-                {processingLogs.map((log) => (
-                  <div key={log.id} className={`mb-2 p-2 rounded ${
-                    log.level === 'error' ? 'bg-red-900' :
-                    log.level === 'warn' ? 'bg-orange-900' :
-                    log.level === 'info' ? 'bg-blue-900' :
-                    'bg-gray-700'
-                  }`}>
-                    <div className="flex items-start space-x-2">
-                      <span className="text-gray-300 text-xs">
-                        {new Date(log.timestamp).toLocaleTimeString()}
-                      </span>
-                      <span className={`text-xs px-1 rounded ${
-                        log.level === 'error' ? 'bg-red-600' :
-                        log.level === 'warn' ? 'bg-orange-600' :
-                        log.level === 'info' ? 'bg-blue-600' :
-                        'bg-gray-600'
-                      }`}>
-                        {log.level.toUpperCase()}
-                      </span>
-                      <span className="text-xs text-purple-300">[{log.category}]</span>
-                    </div>
-                    <div className="mt-1 text-white">{log.message}</div>
-                    {log.data && (
-                      <details className="mt-2">
-                        <summary className="text-gray-300 text-xs cursor-pointer hover:text-white">
-                          📊 View Data
-                        </summary>
-                        <pre className="mt-1 text-xs bg-gray-900 p-2 rounded overflow-x-auto text-gray-300">
-                          {JSON.stringify(log.data, null, 2)}
-                        </pre>
-                      </details>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-            
-            {/* Quick Actions */}
-            <div className="mt-4 flex space-x-2">
-              <button
-                onClick={() => logMessage('info', 'manual', 'Manual test log entry')}
-                className="px-3 py-1 bg-gray-600 text-white rounded text-sm hover:bg-gray-700"
-              >
-                Test Log
-              </button>
-              <button
-                onClick={() => {
-                  const errors = processingLogs.filter(log => log.level === 'error');
-                  console.log('Error logs:', errors);
-                }}
-                className="px-3 py-1 bg-red-600 text-white rounded text-sm hover:bg-red-700"
-              >
-                Console Errors
-              </button>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify(processingLogs, null, 2));
-                  alert('Logs copied to clipboard');
-                }}
-                className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
-              >
-                Copy to Clipboard
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* File Processing Status */}
-        {uploadedFiles.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <h3 className="text-lg font-semibold text-blue-700 mb-4">
-              Processing Status ({uploadedFiles.length} files)
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {uploadedFiles.map((file, index) => (
-                <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                  <div className="font-medium text-sm truncate">{file.name}</div>
-                  <div className="text-xs text-gray-600 mt-1">
-                    {file.transactionCount} transactions • {file.pageCount} pages
-                  </div>
-                  {file.textLength && (
-                    <div className="text-xs text-gray-500">
-                      {file.textLength.toLocaleString()} characters extracted
-                    </div>
-                  )}
-                  <div className="text-xs text-gray-500">
-                    {file.processedAt.toLocaleString()}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Annual Income</p>
-                <p className="text-2xl font-bold text-green-600">
-                  {formatCurrency(totalAnnualIncome)}
-                </p>
-                <p className="text-xs text-gray-500">{incomeEntries.length} sources</p>
-              </div>
-              <DollarSign className="text-green-600" size={32} />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Deductible Expenses</p>
-                <p className="text-2xl font-bold text-blue-600">
-                  {formatCurrency(totalDeductibleExpenses)}
-                </p>
-                <p className="text-xs text-gray-500">{businessExpenses.filter(e => !e.isExcluded).length} items</p>
-              </div>
-              <CheckCircle className="text-blue-600" size={32} />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Taxable Income</p>
-                <p className="text-2xl font-bold text-orange-600">
-                  {formatCurrency(taxableIncome)}
-                </p>
-                <p className="text-xs text-gray-500">Effective: {taxCalculation.effectiveRate.toFixed(1)}%</p>
-              </div>
-              <TrendingUp className="text-orange-600" size={32} />
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-600">Annual Tax</p>
-                <p className="text-2xl font-bold text-red-600">
-                  {formatCurrency(taxCalculation.tax)}
-                </p>
-                <p className="text-xs text-gray-500">Monthly: {formatCurrency(monthlyTaxRequired)}</p>
-              </div>
-              <Calculator className="text-red-600" size={32} />
-            </div>
-          </div>
-        </div>
-
-        {/* Uncategorized Transactions */}
-        {uncategorizedTransactions.length > 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-orange-700">
-                Review Required ({uncategorizedTransactions.length})
-              </h3>
-              <span className="text-sm text-gray-600">Manual review needed</span>
-            </div>
-            
-            <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-4">
-              <div className="flex items-start space-x-3">
-                <AlertCircle className="text-orange-600 mt-1" size={20} />
-                <div>
-                  <h4 className="font-semibold text-orange-800 mb-1">Manual Review Required</h4>
-                  <p className="text-orange-700 text-sm">
-                    These transactions need your attention. TAKEALOT purchases require PDF invoice verification to separate business from personal items.
-                    Inter-bank payments, interest income, and bank charges are automatically excluded from business calculations.
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="space-y-3">
-              {uncategorizedTransactions.map((transaction) => (
-                <div key={transaction.id} className={`p-4 rounded-lg border-l-4 ${
-                  transaction.category === 'takealot-review' ? 'bg-yellow-50 border-yellow-500' : 'bg-gray-50 border-orange-500'
-                }`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
-                      <div className="font-medium">{transaction.originalDescription}</div>
-                      <div className="text-sm text-gray-600">
-                        {transaction.date} • {formatCurrency(transaction.amount)} • {transaction.type}
-                      </div>
-                      {transaction.category === 'takealot-review' && (
-                        <div className="mt-2 p-2 bg-yellow-100 rounded text-sm">
-                          <strong>⚠️ TAKEALOT PURCHASE:</strong> Review PDF invoice to identify business items (stationery, computer equipment) vs personal items (e.g., football)
-                        </div>
-                      )}
-                      {transaction.reason && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Reason: {transaction.reason}
-                        </div>
-                      )}
-                      <div className="text-xs text-gray-500 mt-1">
-                        From: {transaction.sourceFile}
-                      </div>
-                    </div>
-                    
-                    <div className="flex space-x-2 ml-4">
-                      {transaction.category !== 'takealot-review' && (
-                        <>
-                          <button
-                            onClick={() => moveTransactionToCategory(transaction, 'income')}
-                            className="px-3 py-1 text-xs bg-green-200 text-green-700 rounded hover:bg-green-300"
-                            title="Move to Income"
-                          >
-                            Income
-                          </button>
-                          <button
-                            onClick={() => moveTransactionToCategory(transaction, 'business')}
-                            className="px-3 py-1 text-xs bg-blue-200 text-blue-700 rounded hover:bg-blue-300"
-                            title="Move to Business Expenses"
-                          >
-                            Business
-                          </button>
-                          <button
-                            onClick={() => moveTransactionToCategory(transaction, 'personal')}
-                            className="px-3 py-1 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300"
-                            title="Move to Personal Expenses"
-                          >
-                            Personal
-                          </button>
-                        </>
-                      )}
-                      {transaction.category === 'takealot-review' && (
-                        <div className="text-xs text-yellow-700 font-medium">
-                          Manual Invoice Review Required
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Income Section */}
-        <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-green-700">Income Sources</h3>
-            <div className="flex space-x-2">
-              {editMode && (
-                <button
-                  onClick={addIncomeEntry}
-                  className="flex items-center px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                >
-                  <Plus className="mr-1" size={16} />
-                  Add Income
-                </button>
-              )}
-              <span className="text-sm text-gray-600">
-                {incomeEntries.length} sources • {formatCurrency(totalAnnualIncome)} total
-              </span>
-            </div>
-          </div>
-          
-          <div className="space-y-3">
-            {incomeEntries.length === 0 ? (
-              <div className="text-center text-gray-500 py-8">
-                <FileUp className="mx-auto mb-4" size={48} />
-                <p>No income sources found.</p>
-                <p className="text-sm">Upload PDF bank statements or add manually to get started.</p>
-              </div>
-            ) : (
-              incomeEntries.map((entry) => (
-                <div key={entry.id} className="p-4 bg-gray-50 rounded-lg border-l-4 border-green-500">
-                  {editMode && editingEntry?.type === 'income' && editingEntry?.id === entry.id ? (
-                    <div className="space-y-3">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <input
-                          type="text"
-                          value={entry.description}
-                          onChange={(e) => updateIncomeEntry(entry.id, 'description', e.target.value)}
-                          className="p-2 border border-gray-300 rounded"
-                          placeholder="Description"
-                        />
-                        <input
-                          type="number"
-                          step="0.01"
-                          value={entry.amount}
-                          onChange={(e) => updateIncomeEntry(entry.id, 'amount', e.target.value)}
-                          className="p-2 border border-gray-300 rounded"
-                          placeholder="Amount"
-                        />
-                        <select
-                          value={entry.source}
-                          onChange={(e) => updateIncomeEntry(entry.id, 'source', e.target.value)}
-                          className="p-2 border border-gray-300 rounded"
-                        >
-                          {incomeCategories.map(cat => (
-                            <option key={cat} value={cat}>{cat}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <input
-                        type="text"
-                        value={entry.notes || ''}
-                        onChange={(e) => updateIncomeEntry(entry.id, 'notes', e.target.value)}
-                        className="w-full p-2 border border-gray-300 rounded"
-                        placeholder="Notes"
-                      />
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => setEditingEntry(null)}
-                          className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
-                        >
-                          Save
-                        </button>
-                        <button
-                          onClick={() => deleteIncomeEntry(entry.id)}
-                          className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-3">
-                        {getDataSourceBadge(entry.dataSource, entry.confidence, false)}
-                        <span className="font-medium text-lg">{entry.description}</span>
-                        {editMode && (
-                          <button
-                            onClick={() => setEditingEntry({ type: 'income', id: entry.id })}
-                            className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xl font-bold text-green-600">
-                          {formatCurrency(calculateAnnualAmount(entry.amount, entry.period))}
-                        </div>
-                        <div className="text-sm text-gray-600">{entry.source}</div>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {entry.notes && !editMode && (
-                    <div className="mt-2 text-sm text-gray-600">💡 {entry.notes}</div>
-                  )}
-                  
-                  {showTransactionDetails && entry.sourceTransactions && (
-                    <div className="mt-3 p-3 bg-white rounded border">
-                      <div className="text-xs font-medium text-gray-600 mb-2">Source Transactions:</div>
-                      {entry.sourceTransactions.slice(0, 5).map((transaction, idx) => (
-                        <div key={idx} className="text-xs text-gray-500 flex justify-between mb-1">
-                          <span>{transaction.date}: {transaction.originalDescription}</span>
-                          <span>{formatCurrency(transaction.amount)}</span>
-                        </div>
-                      ))}
-                      {entry.sourceTransactions.length > 5 && (
-                        <div className="text-xs text-gray-400">
-                          ... and {entry.sourceTransactions.length - 5} more transactions
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        {/* Empty State */}
-        {incomeEntries.length === 0 && businessExpenses.length === 0 && personalExpenses.length === 0 && uploadedFiles.length === 0 && (
-          <div className="bg-white rounded-lg shadow-lg p-12 text-center">
-            <div className="flex items-center justify-center mb-6 space-x-4">
-              <FileUp className="text-blue-600" size={64} />
-              <div className={`px-3 py-1 rounded-full text-sm ${
-                pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
-              }`}>
-                PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
-              </div>
-              {debugMode && (
-                <div className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm">
-                  Debug Mode Active
-                </div>
-              )}
-            </div>
-            <h3 className="text-2xl font-bold text-gray-800 mb-4">SA Provisional Tax Calculator with Smart Categorization & Debugging</h3>
-            <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-              Upload your bank statement PDFs for intelligent transaction categorization optimized for provisional tax payers. 
-              Automatically identifies Precise Digitait income, excludes inter-bank payments, interest income, and bank charges.
-              Personal expenses (Virgin gym, Old Mutual investments, Netflix, Apple, YouTube, SABC, CARTRACK) are automatically excluded.
-              TAKEALOT purchases require manual PDF invoice review to separate business items from personal.
-            </p>
-            
-            {debugMode && (
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6 max-w-2xl mx-auto">
-                <div className="flex items-start space-x-3">
-                  <AlertCircle className="text-orange-600 mt-1" size={20} />
-                  <div className="text-left">
-                    <h4 className="font-semibold text-orange-800 mb-1">🔍 Debug Mode Active</h4>
-                    <p className="text-orange-700 text-sm">
-                      Comprehensive logging is enabled. All PDF processing steps will be tracked including:
-                      text extraction, regex pattern matching, transaction parsing, and categorization decisions.
-                      Use this mode to troubleshoot PDF parsing issues.
-                    </p>
-                  </div>
-                </div>
               </div>
             )}
-            
-            <label className={`inline-flex items-center px-6 py-3 ${
-              pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
-            } text-white rounded-lg cursor-pointer text-lg`}>
-              <Upload className="mr-2" size={20} />
-              Upload Bank Statement PDFs
-              <input
-                type="file"
-                accept=".pdf"
-                multiple
-                onChange={handleFileUpload}
-                className="hidden"
-                disabled={isProcessing || !pdfJsLoaded}
-              />
-            </label>
-            
-            <div className="mt-6 space-y-2">
-              <p className="text-sm text-gray-500">
-                Optimized for provisional tax payers • Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
-                Automatically applies {homeOfficePercentage}% home office deduction • Excludes non-deductible personal expenses
-              </p>
-              
-              {!debugMode && (
-                <p className="text-xs text-gray-400">
-                  💡 Enable Debug Mode above if you're experiencing PDF parsing issues
-                </p>
-              )}
-              
-              <p className="text-xs text-gray-400">
-                🔧 Debug features: comprehensive logging, text extraction preview, pattern matching analysis, categorization tracking
-              </p>
-            </div>
           </div>
         )}
-
-        {/* Footer */}
-        <div className="text-center text-gray-600 text-sm">
-          <p>⚖️ Please consult with a qualified tax practitioner for official tax filing and advice</p>
-          <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
-          {debugMode && (
-            <p className="mt-1 text-orange-600 font-medium">🔍 Debug Mode: Comprehensive logging active</p>
-          )}
-        </div>
+      </div>
+      
+      {/* Footer */}
+      <div className="text-center text-gray-600 text-sm py-8">
+        <p>⚖️ Please consult with a qualified tax practitioner for official tax filing and advice</p>
+        <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
+        {debugMode && (
+          <p className="mt-1 text-orange-600 font-medium">🔍 Debug Mode: Comprehensive logging active</p>
+        )}
       </div>
     </div>
   );
