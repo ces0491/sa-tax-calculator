@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCircle, AlertCircle, X, Edit2, Save, Plus, Trash, Eye, EyeOff, Settings, RefreshCw, FileUp } from 'lucide-react';
 
-// Import modules
-import { createEnhancedPDFProcessor } from './pdf-processing';
+// Import modules - CORRECTED IMPORTS
+import { createPDFProcessor } from './pdf-processing';
 import { createCategorizer } from './transaction-categorisation';
 import { calculateTax, taxBracketsData } from './utils/tax-calculations';
 import { formatCurrency, getCurrentTaxYear, calculateAnnualAmount, getDataSourceBadge } from './utils/currency-formatters';
@@ -72,8 +72,8 @@ const SATaxCalculator = () => {
     setExtractedTexts([]);
   };
 
-  // Create enhanced processors
-  const enhancedProcessor = createEnhancedPDFProcessor(logMessage, debugMode);
+  // Create processors - CORRECTED TO USE createPDFProcessor
+  const pdfProcessor = createPDFProcessor(logMessage, debugMode);
   const { categorizeTransactions } = createCategorizer(logMessage, debugMode, homeOfficePercentage, (amount, period) => calculateAnnualAmount(amount, period, statementPeriod));
 
   // Load PDF.js
@@ -105,7 +105,7 @@ const SATaxCalculator = () => {
   // Update period detection when transactions change
   useEffect(() => {
     if (rawTransactions.length > 0) {
-      const period = enhancedProcessor.detectStatementPeriod(rawTransactions);
+      const period = pdfProcessor.detectStatementPeriod(rawTransactions);
       setStatementPeriod(period);
       setIsProjectedIncome(period?.isPartialYear || false);
     }
@@ -128,7 +128,7 @@ const SATaxCalculator = () => {
   const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
   const monthlyTaxRequired = taxCalculation.tax / 12;
 
-  // Enhanced PDF Processing using the new processor
+  // Enhanced PDF Processing using the corrected processor
   const processPDF = async (file) => {
     logMessage('info', 'pdf-load', `Starting enhanced PDF processing for: ${file.name}`);
     
@@ -142,8 +142,8 @@ const SATaxCalculator = () => {
         fileName: file.name
       });
       
-      // Use enhanced text extraction
-      const textResult = await enhancedProcessor.extractTextFromPDF(pdf, file.name);
+      // Use enhanced text extraction - CORRECTED FUNCTION CALL
+      const textResult = await pdfProcessor.extractTextFromPDF(pdf, file.name);
       
       if (!textResult.text || textResult.text.length < 100) {
         logMessage('error', 'text-extract', `Insufficient text extracted from PDF`, {
@@ -172,9 +172,9 @@ const SATaxCalculator = () => {
         extractedAt: new Date()
       }]);
       
-      // Extract transactions using enhanced processor
+      // Extract transactions using enhanced processor - CORRECTED FUNCTION CALL
       logMessage('info', 'transaction-parse', 'Starting enhanced transaction extraction');
-      const transactions = await enhancedProcessor.extractTransactions(textResult.text, file.name);
+      const transactions = await pdfProcessor.extractTransactions(textResult.text, file.name);
       
       if (transactions.length === 0) {
         logMessage('warn', 'transaction-parse', `No transactions found in ${file.name}`, {
@@ -525,7 +525,7 @@ const SATaxCalculator = () => {
           </div>
         )}
 
-        {/* Income Tab (simplified for space) */}
+        {/* Income Tab */}
         {activeTab === 'income' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">

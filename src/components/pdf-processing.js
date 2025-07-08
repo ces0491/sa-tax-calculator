@@ -1,5 +1,5 @@
 // Enhanced PDF Processing with Robust Text Extraction for Standard Bank Statements
-// This completely replaces the existing pdf-processing.js file
+// This completely replaces src/components/pdf-processing.js
 
 export const createPDFProcessor = (logMessage, debugMode, statementPeriod) => {
   
