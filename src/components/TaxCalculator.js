@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCircle, AlertCircle, X, Edit2, Save, Plus, Trash, Eye, EyeOff, Settings, RefreshCw, FileUp } from 'lucide-react';
 
-// Import modular functions
-import { createPDFProcessor } from './pdf-processing';
+// Import modules
+import { createEnhancedPDFProcessor } from './enhanced-pdf-processing';
 import { createCategorizer } from './transaction-categorisation';
 import { calculateTax, taxBracketsData } from './utils/tax-calculations';
 import { formatCurrency, getCurrentTaxYear, calculateAnnualAmount, getDataSourceBadge } from './utils/currency-formatters';
@@ -72,8 +72,8 @@ const SATaxCalculator = () => {
     setExtractedTexts([]);
   };
 
-  // Create modular processors
-  const { detectStatementPeriod, extractTransactions } = createPDFProcessor(logMessage, debugMode, statementPeriod);
+  // Create enhanced processors
+  const enhancedProcessor = createEnhancedPDFProcessor(logMessage, debugMode);
   const { categorizeTransactions } = createCategorizer(logMessage, debugMode, homeOfficePercentage, (amount, period) => calculateAnnualAmount(amount, period, statementPeriod));
 
   // Load PDF.js
@@ -86,13 +86,17 @@ const SATaxCalculator = () => {
           script.onload = () => {
             window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
             setPdfJsLoaded(true);
+            logMessage('info', 'pdf-js', 'PDF.js loaded successfully');
+          };
+          script.onerror = () => {
+            logMessage('error', 'pdf-js', 'Failed to load PDF.js');
           };
           document.head.appendChild(script);
         } else if (window.pdfjsLib) {
           setPdfJsLoaded(true);
         }
       } catch (error) {
-        console.error('Failed to load PDF.js:', error);
+        logMessage('error', 'pdf-js', 'Error loading PDF.js', { error: error.message });
       }
     };
     loadPdfJs();
@@ -101,7 +105,7 @@ const SATaxCalculator = () => {
   // Update period detection when transactions change
   useEffect(() => {
     if (rawTransactions.length > 0) {
-      const period = detectStatementPeriod(rawTransactions);
+      const period = enhancedProcessor.detectStatementPeriod(rawTransactions);
       setStatementPeriod(period);
       setIsProjectedIncome(period?.isPartialYear || false);
     }
@@ -124,12 +128,9 @@ const SATaxCalculator = () => {
   const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
   const monthlyTaxRequired = taxCalculation.tax / 12;
 
-  // Updated PDF Processing section for TaxCalculator.js
-// Replace the processPDF function in your TaxCalculator.js with this enhanced version
-
-  // Enhanced PDF Processing using modular functions  
+  // Enhanced PDF Processing using the new processor
   const processPDF = async (file) => {
-    logMessage('info', 'pdf-load', `Starting PDF processing for: ${file.name}`);
+    logMessage('info', 'pdf-load', `Starting enhanced PDF processing for: ${file.name}`);
     
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -141,126 +142,82 @@ const SATaxCalculator = () => {
         fileName: file.name
       });
       
-      // Enhanced text extraction with better structure preservation
-      let allText = '';
+      // Use enhanced text extraction
+      const textResult = await enhancedProcessor.extractTextFromPDF(pdf, file.name);
       
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        try {
-          const page = await pdf.getPage(pageNum);
-          const textContent = await page.getTextContent();
-          
-          logMessage('debug', 'text-extract', `Page ${pageNum} text extraction`, {
-            itemCount: textContent.items.length
-          });
-          
-          // Enhanced text extraction - preserve positioning and structure
-          const pageItems = textContent.items.map(item => ({
-            str: item.str,
-            x: item.transform[4],
-            y: item.transform[5],
-            width: item.width,
-            height: item.height
-          }));
-          
-          // Sort items by Y coordinate (top to bottom) then X coordinate (left to right)
-          const sortedItems = pageItems.sort((a, b) => b.y - a.y || a.x - b.x);
-          
-          let structuredText = '';
-          let currentY = null;
-          let currentLine = [];
-          
-          for (const item of sortedItems) {
-            if (currentY === null || Math.abs(item.y - currentY) > 2) {
-              // New line
-              if (currentLine.length > 0) {
-                structuredText += currentLine.join(' ').trim() + '\n';
-              }
-              currentLine = [item.str];
-              currentY = item.y;
-            } else {
-              // Same line - add with space if not empty
-              if (item.str.trim()) {
-                currentLine.push(item.str);
-              }
-            }
-          }
-          
-          // Add the last line
-          if (currentLine.length > 0) {
-            structuredText += currentLine.join(' ').trim() + '\n';
-          }
-          
-          allText += structuredText;
-          
-        } catch (pageError) {
-          logMessage('error', 'text-extract', `Error processing page ${pageNum}`, {
-            error: pageError.message
-          });
-        }
-      }
-      
-      // Clean up the extracted text
-      allText = allText.replace(/\s+/g, ' ').replace(/\n\s*\n/g, '\n').trim();
-      
-      logMessage('info', 'text-extract', `Text extraction completed`, {
-        totalTextLength: allText.length,
-        lineCount: allText.split('\n').length,
-        fileName: file.name
-      });
-      
-      if (!allText || allText.length < 100) {
+      if (!textResult.text || textResult.text.length < 100) {
         logMessage('error', 'text-extract', `Insufficient text extracted from PDF`, {
-          textLength: allText?.length || 0,
+          textLength: textResult.text?.length || 0,
+          linesFound: textResult.lines?.length || 0,
           fileName: file.name
         });
         throw new Error(`Could not extract readable text from ${file.name}. Please ensure it's a text-based PDF.`);
       }
       
+      logMessage('info', 'text-extract', `Enhanced text extraction completed`, {
+        textLength: textResult.text.length,
+        linesFound: textResult.lines.length,
+        totalItems: textResult.totalItems,
+        fileName: file.name
+      });
+      
+      // Store extracted text for debugging
       setExtractedTexts(prev => [...prev, {
         fileName: file.name,
         pageCount: pdf.numPages,
-        totalTextLength: allText.length,
-        allText: allText,
-        extractedAt: new Date(),
-        lineCount: allText.split('\n').length
+        totalTextLength: textResult.text.length,
+        linesFound: textResult.lines.length,
+        allText: textResult.text,
+        allLines: textResult.lines,
+        extractedAt: new Date()
       }]);
       
-      logMessage('info', 'transaction-parse', 'Starting transaction extraction with enhanced parser');
-      const transactions = await extractTransactions(allText, file.name);
+      // Extract transactions using enhanced processor
+      logMessage('info', 'transaction-parse', 'Starting enhanced transaction extraction');
+      const transactions = await enhancedProcessor.extractTransactions(textResult.text, file.name);
       
       if (transactions.length === 0) {
         logMessage('warn', 'transaction-parse', `No transactions found in ${file.name}`, {
-          textLength: allText.length,
-          lineCount: allText.split('\n').length,
-          sampleText: allText.substring(0, 500),
-          hasDatePatterns: allText.match(/\d{1,2}\s+\w{3}/g)?.length || 0
+          textLength: textResult.text.length,
+          linesFound: textResult.lines.length,
+          sampleText: textResult.text.substring(0, 500),
+          sampleLines: textResult.lines.slice(0, 20)
         });
         
-        // Still proceed but notify user
         setProcessingStatus(`Warning: No transactions found in ${file.name}. Please check if it's a valid bank statement.`);
       } else {
         logMessage('info', 'categorization', `Starting categorization of ${transactions.length} transactions`);
         const processedData = categorizeTransactions(transactions);
 
-        // Update states
+        // Update states with categorized data
         setRawTransactions(prev => [...prev, ...transactions]);
         setIncomeEntries(prev => [...prev, ...processedData.income]);
         setBusinessExpenses(prev => [...prev, ...processedData.business]);
         setPersonalExpenses(prev => [...prev, ...processedData.personal]);
         setHomeExpenses(prev => [...prev, ...processedData.home]);
         setUncategorizedTransactions(prev => [...prev, ...processedData.uncategorized]);
+        
+        logMessage('info', 'categorization', `Categorization completed`, {
+          totalTransactions: transactions.length,
+          income: processedData.income.length,
+          business: processedData.business.length,
+          personal: processedData.personal.length,
+          home: processedData.home.length,
+          uncategorized: processedData.uncategorized.length
+        });
       }
 
+      // Update uploaded files list
       setUploadedFiles(prev => [...prev, {
         name: file.name,
         pageCount: pdf.numPages,
         transactionCount: transactions.length,
         processedAt: new Date(),
-        textLength: allText.length,
-        lineCount: allText.split('\n').length
+        textLength: textResult.text.length,
+        linesFound: textResult.lines.length
       }]);
       
-      logMessage('info', 'pdf-load', `PDF processing completed successfully for: ${file.name}`, {
+      logMessage('info', 'pdf-load', `Enhanced PDF processing completed successfully for: ${file.name}`, {
         transactionsFound: transactions.length
       });
       
@@ -277,22 +234,23 @@ const SATaxCalculator = () => {
     if (files.length === 0 || !pdfJsLoaded) return;
 
     setIsProcessing(true);
-    setProcessingStatus('Starting PDF processing...');
+    setProcessingStatus('Starting enhanced PDF processing...');
     clearLogs();
 
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        setProcessingStatus(`Processing ${file.name} (${i + 1}/${files.length})...`);
+        setProcessingStatus(`Processing ${file.name} (${i + 1}/${files.length}) with enhanced extraction...`);
         await processPDF(file);
       }
       
-      setProcessingStatus(`Successfully processed ${files.length} file(s)`);
-      setTimeout(() => setProcessingStatus(''), 3000);
+      setProcessingStatus(`✅ Successfully processed ${files.length} file(s) with enhanced extraction`);
+      setTimeout(() => setProcessingStatus(''), 5000);
       
     } catch (error) {
-      const errorMessage = `Error processing files: ${error.message}`;
+      const errorMessage = `❌ Error processing files: ${error.message}`;
       setProcessingStatus(errorMessage);
+      logMessage('error', 'file-upload', errorMessage, { error: error.message });
     } finally {
       setIsProcessing(false);
       if (debugMode) {
@@ -318,7 +276,7 @@ const SATaxCalculator = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-gray-800">SA Tax Calculator</h1>
-              <p className="text-sm text-gray-600">Smart categorization for provisional tax payers</p>
+              <p className="text-sm text-gray-600">Enhanced PDF processing for accurate transaction extraction</p>
             </div>
             
             {/* Quick Stats */}
@@ -343,7 +301,7 @@ const SATaxCalculator = () => {
                 pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
               }`}>
                 <CheckCircle className="mr-1" size={12} />
-                PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
+                Enhanced PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
               </span>
               {uploadedFiles.length > 0 && (
                 <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
@@ -364,7 +322,11 @@ const SATaxCalculator = () => {
           {processingStatus && (
             <div className="mt-3 flex items-center space-x-2">
               {isProcessing && <RefreshCw className="animate-spin" size={16} />}
-              <span className={`text-sm ${isProcessing ? 'text-blue-600' : processingStatus.includes('Error') ? 'text-red-600' : 'text-green-600'}`}>
+              <span className={`text-sm ${
+                isProcessing ? 'text-blue-600' : 
+                processingStatus.includes('❌') ? 'text-red-600' : 
+                'text-green-600'
+              }`}>
                 {processingStatus}
               </span>
             </div>
@@ -505,10 +467,10 @@ const SATaxCalculator = () => {
                 <div className="flex items-center justify-center mb-6">
                   <FileUp className="text-blue-600" size={64} />
                 </div>
-                <h3 className="text-2xl font-bold text-gray-800 mb-4">Get Started with Your Tax Calculation</h3>
+                <h3 className="text-2xl font-bold text-gray-800 mb-4">Get Started with Enhanced PDF Processing</h3>
                 <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-                  Upload your bank statement PDFs for intelligent transaction extraction. 
-                  The system will read all transactions and let you categorize them as income or business expenses.
+                  Upload your bank statement PDFs for intelligent transaction extraction with our enhanced processing engine. 
+                  The system now has improved text recognition and transaction parsing for better accuracy.
                 </p>
                 
                 <label className={`inline-flex items-center px-6 py-3 ${
@@ -528,8 +490,9 @@ const SATaxCalculator = () => {
                 
                 <div className="mt-6">
                   <p className="text-sm text-gray-500">
-                    Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
-                    Auto-applies {homeOfficePercentage}% home office deduction • Manual categorization for accuracy
+                    ✨ Enhanced processing for Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
+                    🔧 Improved text extraction and transaction parsing<br/>
+                    📊 Auto-applies {homeOfficePercentage}% home office deduction • Manual categorization for accuracy
                   </p>
                 </div>
               </div>
@@ -539,7 +502,7 @@ const SATaxCalculator = () => {
             {uploadedFiles.length > 0 && (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h3 className="text-lg font-semibold text-blue-700 mb-4">
-                  📁 Processed Files ({uploadedFiles.length})
+                  📁 Processed Files ({uploadedFiles.length}) - Enhanced Processing
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {uploadedFiles.map((file, index) => (
@@ -547,6 +510,9 @@ const SATaxCalculator = () => {
                       <div className="font-medium text-sm truncate">{file.name}</div>
                       <div className="text-xs text-gray-600 mt-1">
                         {file.transactionCount} transactions • {file.pageCount} pages
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {file.linesFound} lines extracted • {(file.textLength / 1024).toFixed(1)}KB text
                       </div>
                       <div className="text-xs text-gray-500">
                         {file.processedAt.toLocaleString()}
@@ -559,7 +525,7 @@ const SATaxCalculator = () => {
           </div>
         )}
 
-        {/* Income Tab */}
+        {/* Income Tab (simplified for space) */}
         {activeTab === 'income' && (
           <div className="space-y-6">
             <div className="bg-white rounded-lg shadow-lg p-6">
@@ -646,7 +612,7 @@ const SATaxCalculator = () => {
           </div>
         )}
 
-        {/* Additional tabs would be similar - using imported functions */}
+        {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
             {/* Tax Settings */}
@@ -697,15 +663,15 @@ const SATaxCalculator = () => {
               </div>
             </div>
 
-            {/* File Upload */}
+            {/* Enhanced File Upload */}
             <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-6">Document Upload</h3>
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">Enhanced Document Upload</h3>
               <div className="space-y-4">
                 <label className={`w-full p-6 ${
                   pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
                 } text-white rounded-lg cursor-pointer flex items-center justify-center text-lg font-medium`}>
                   <Upload className="mr-3" size={24} />
-                  Upload Bank Statement PDFs
+                  Upload Bank Statement PDFs (Enhanced Processing)
                   <input
                     type="file"
                     accept=".pdf"
@@ -715,9 +681,16 @@ const SATaxCalculator = () => {
                     disabled={isProcessing || !pdfJsLoaded}
                   />
                 </label>
-                <p className="text-sm text-gray-600 text-center">
-                  Supports Standard Bank, FNB, ABSA, Nedbank, and Capitec • Multiple files supported
-                </p>
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="font-medium text-blue-800 mb-2">✨ Enhanced Processing Features:</h4>
+                  <ul className="text-sm text-blue-700 space-y-1">
+                    <li>• Improved text extraction preserving line structure</li>
+                    <li>• Smart transaction reconstruction for multi-line entries</li>
+                    <li>• Better handling of South African number formats (spaces in amounts)</li>
+                    <li>• Enhanced Standard Bank format recognition</li>
+                    <li>• Comprehensive debugging and logging</li>
+                  </ul>
+                </div>
               </div>
             </div>
 
@@ -749,7 +722,7 @@ const SATaxCalculator = () => {
               {processingLogs.length > 0 && (
                 <div className="mt-6">
                   <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-800">Processing Logs ({processingLogs.length})</h4>
+                    <h4 className="font-medium text-gray-800">Enhanced Processing Logs ({processingLogs.length})</h4>
                     <div className="flex space-x-2 text-sm">
                       <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
                         {processingLogs.filter(log => log.level === 'info').length} Info
@@ -770,7 +743,7 @@ const SATaxCalculator = () => {
                     }`}
                   >
                     <FileText className="mr-1" size={16} />
-                    {showLogs ? 'Hide' : 'Show'} Logs
+                    {showLogs ? 'Hide' : 'Show'} Enhanced Processing Logs
                   </button>
                 </div>
               )}
@@ -778,7 +751,7 @@ const SATaxCalculator = () => {
               {showLogs && processingLogs.length > 0 && (
                 <div className="mt-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
                   <div className="bg-gray-800 text-white p-3 font-mono text-sm">
-                    {processingLogs.slice(-20).map((log) => (
+                    {processingLogs.slice(-25).map((log) => (
                       <div key={log.id} className={`mb-2 p-2 rounded ${
                         log.level === 'error' ? 'bg-red-900' :
                         log.level === 'warn' ? 'bg-orange-900' :
@@ -800,6 +773,11 @@ const SATaxCalculator = () => {
                           <span className="text-xs text-purple-300">[{log.category}]</span>
                         </div>
                         <div className="mt-1 text-white">{log.message}</div>
+                        {log.data && (
+                          <div className="mt-1 text-xs text-gray-300">
+                            {JSON.stringify(log.data).substring(0, 200)}...
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -812,10 +790,10 @@ const SATaxCalculator = () => {
       
       {/* Footer */}
       <div className="text-center text-gray-600 text-sm py-8">
-        <p>Current Tax Year: {getCurrentTaxYear()} • Please consult with a qualified tax practitioner for official tax filing and advice</p>
+        <p>Current Tax Year: {getCurrentTaxYear()} • Enhanced PDF Processing v2.0 • Please consult with a qualified tax practitioner for official tax filing and advice</p>
         <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
         {debugMode && (
-          <p className="mt-1 text-orange-600 font-medium">🔍 Debug Mode: Comprehensive logging active</p>
+          <p className="mt-1 text-orange-600 font-medium">🔍 Enhanced Debug Mode: Comprehensive logging and detailed extraction analysis</p>
         )}
       </div>
     </div>
