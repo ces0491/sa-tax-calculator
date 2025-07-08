@@ -1,5 +1,5 @@
-// PDF Processing and Transaction Extraction Functions
-// This file contains the core PDF processing logic
+// FIXED PDF Processing for Standard Bank Format
+// Replace your src/components/pdf-processing.js with this corrected version
 
 export const createPDFProcessor = (logMessage, debugMode, statementPeriod) => {
   
@@ -52,7 +52,45 @@ export const createPDFProcessor = (logMessage, debugMode, statementPeriod) => {
     };
   };
 
-  // Extract transactions from PDF text
+  // FIXED: Parse amount and balance from space-separated string
+  const parseAmountBalance = (amountBalanceStr) => {
+    const tokens = amountBalanceStr.split(/\s+/);
+    
+    if (tokens.length === 2) {
+      // Simple case: "199.98 56199.52" 
+      return {
+        amount: tokens[0].replace(/,/g, ''),
+        balance: tokens[1].replace(/,/g, '')
+      };
+    } else if (tokens.length === 3) {
+      // Case: "199.98 56 199.52" -> amount: "199.98", balance: "56199.52"
+      return {
+        amount: tokens[0].replace(/,/g, ''),
+        balance: tokens.slice(1).join('').replace(/,/g, '')
+      };
+    } else if (tokens.length === 4) {
+      // Case: "1 304.60 54 296.72" -> amount: "1304.60", balance: "54296.72"
+      return {
+        amount: tokens.slice(0, 2).join('').replace(/,/g, ''),
+        balance: tokens.slice(2).join('').replace(/,/g, '')
+      };
+    } else if (tokens.length > 4) {
+      // More complex case - split roughly in half
+      const midPoint = Math.ceil(tokens.length / 2);
+      return {
+        amount: tokens.slice(0, midPoint).join('').replace(/,/g, ''),
+        balance: tokens.slice(midPoint).join('').replace(/,/g, '')
+      };
+    } else {
+      // Single token or empty
+      return {
+        amount: tokens[0]?.replace(/,/g, '') || '0',
+        balance: '0'
+      };
+    }
+  };
+
+  // FIXED: Extract transactions from PDF text using Standard Bank format
   const extractTransactions = (text, sourceFile) => {
     logMessage('info', 'transaction-parse', `Starting transaction extraction from ${sourceFile}`, {
       textLength: text.length,
@@ -62,17 +100,8 @@ export const createPDFProcessor = (logMessage, debugMode, statementPeriod) => {
     const transactions = [];
     const lines = text.split('\n').filter(line => line.trim().length > 0);
     
-    // Enhanced regex patterns for Standard Bank format - handle spaces in amounts
-    const patterns = {
-      standardBankCredit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+\+\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
-      standardBankDebit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*(.+?)\s+-\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
-      simpleCredit: /(\d{2}\s+\w{3})\s+(.+?)\s+\+\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
-      simpleDebit: /(\d{2}\s+\w{3})\s+(.+?)\s+-\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/,
-      genericTransaction: /(\d{1,2}\s+\w{3})\s+(.+?)\s+([+-])\s*([\d\s,.\-]+)\s+([\d\s,.\-]+)$/
-    };
-    
-    let matchCounts = {};
-    Object.keys(patterns).forEach(key => matchCounts[key] = 0);
+    let successfulParses = 0;
+    let failedParses = 0;
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
@@ -86,98 +115,109 @@ export const createPDFProcessor = (logMessage, debugMode, statementPeriod) => {
           line.includes('Website') ||
           line.includes('Account holder') ||
           line.includes('Transaction date range') ||
-          !line.match(/[\d\s,.]+/)) {
+          line.includes('Account:') ||
+          line.includes('Available balance:') ||
+          !line.match(/\d{1,2}\s+\w{3}/)) {
         continue;
       }
       
-      let matched = false;
-      
-      for (const [patternName, pattern] of Object.entries(patterns)) {
-        const match = line.match(pattern);
+      try {
+        // FIXED: Handle Standard Bank format
+        // Pattern: "Date Description - Type - Amount Balance" or "Date Description - Type + Amount Balance"
         
-        if (match) {
-          matched = true;
-          matchCounts[patternName]++;
+        // Split by " - " to get main parts
+        const parts = line.split(' - ');
+        
+        if (parts.length >= 2) {
+          const datePart = parts[0].trim();
+          let typePart = parts[1].trim();
+          let amountBalancePart = parts.length > 2 ? parts.slice(2).join(' - ').trim() : '';
           
-          try {
-            let date, description, transactionType, amount, balance, isCredit = false;
+          // Extract date (first word group like "30 Nov")
+          const dateMatch = datePart.match(/^(\d{1,2}\s+\w{3})/);
+          if (!dateMatch) continue;
+          
+          const date = dateMatch[1];
+          const description = datePart.replace(dateMatch[1], '').trim();
+          
+          // Handle credits where amount is in typePart (like "credit transfer + 61 011.71 61 799.33")
+          const creditMatch = typePart.match(/^(.+?)\s*\+\s*([\d\s,.]+)$/);
+          if (creditMatch) {
+            typePart = creditMatch[1].trim();
+            amountBalancePart = creditMatch[2].trim();
+          }
+          
+          // Parse amount and balance
+          if (amountBalancePart) {
+            const { amount, balance } = parseAmountBalance(amountBalancePart);
             
-            if (patternName === 'standardBankCredit') {
-              [, date, description, transactionType, amount, balance] = match;
-              isCredit = true;
-            } else if (patternName === 'standardBankDebit') {
-              [, date, description, transactionType, amount, balance] = match;
-              isCredit = false;
-            } else if (patternName === 'simpleCredit') {
-              [, date, description, amount, balance] = match;
-              isCredit = true;
-              transactionType = 'credit transfer';
-            } else if (patternName === 'simpleDebit') {
-              [, date, description, amount, balance] = match;
-              isCredit = false;
-              transactionType = 'debit';
-            } else {
-              [, date, description, sign, amount, balance] = match;
-              isCredit = sign === '+';
-              transactionType = isCredit ? 'credit' : 'debit';
-            }
-            
-            // Enhanced amount cleaning - properly handle spaces in large numbers
-            const cleanAmount = amount
-              .replace(/\s+/g, '') // Remove all spaces first
-              .replace(/,/g, '') // Remove commas
-              .replace(/[^\d.-]/g, ''); // Keep only digits, dots, and minus
-            
-            const cleanBalance = balance ? balance
-              .replace(/\s+/g, '')
-              .replace(/,/g, '')
-              .replace(/[^\d.-]/g, '') : '0';
-            
-            const numAmount = parseFloat(cleanAmount);
-            const numBalance = parseFloat(cleanBalance);
+            const numAmount = parseFloat(amount);
+            const numBalance = parseFloat(balance);
             
             if (!isNaN(numAmount) && numAmount > 0) {
+              // Determine if credit or debit
+              const isCredit = creditMatch || typePart.includes('credit') || line.includes(' + ');
               const finalAmount = isCredit ? numAmount : -numAmount;
               
               const transaction = {
                 id: Date.now() + Math.random(),
-                date: date.trim(),
-                originalDescription: `${description.trim()} - ${transactionType}`.replace(/\s+/g, ' '),
+                date: date,
+                originalDescription: `${description} - ${typePart}`.replace(/\s+/g, ' ').trim(),
                 amount: finalAmount,
                 balance: numBalance || 0,
                 type: isCredit ? 'credit' : 'debit',
                 sourceFile,
                 lineNumber: i + 1,
-                matchedPattern: patternName,
+                matchedPattern: 'standard-bank-fixed',
                 rawLine: line,
-                rawAmount: amount
+                rawAmount: amountBalancePart
               };
               
               transactions.push(transaction);
+              successfulParses++;
               
-              if (debugMode && (transactions.length <= 15 || numAmount > 50000)) {
-                logMessage('debug', 'transaction-parse', `Transaction extracted (${patternName})`, {
+              if (debugMode && (successfulParses <= 15 || Math.abs(finalAmount) > 50000)) {
+                logMessage('debug', 'transaction-parse', `Transaction extracted successfully`, {
                   transaction: {
                     date: transaction.date,
                     description: transaction.originalDescription.substring(0, 60),
                     amount: transaction.amount,
-                    rawAmount: amount,
-                    cleanedAmount: cleanAmount
+                    isCredit,
+                    rawAmountBalance: amountBalancePart
                   },
-                  originalLine: line.substring(0, 120)
+                  parsedAmount: amount,
+                  parsedBalance: balance
+                });
+              }
+            } else {
+              failedParses++;
+              if (debugMode && failedParses <= 5) {
+                logMessage('warn', 'transaction-parse', `Invalid amount in line`, {
+                  line: line.substring(0, 100),
+                  amountBalancePart,
+                  parsedAmount: amount
                 });
               }
             }
-            
-          } catch (parseError) {
-            logMessage('warn', 'transaction-parse', `Error parsing matched line`, {
-              line: line.substring(0, 100),
-              pattern: patternName,
-              error: parseError.message
-            });
+          } else {
+            failedParses++;
+            if (debugMode && failedParses <= 5) {
+              logMessage('warn', 'transaction-parse', `No amount/balance found in line`, {
+                line: line.substring(0, 100),
+                parts: parts.length,
+                typePart
+              });
+            }
           }
-          
-          break;
+        }
+        
+      } catch (parseError) {
+        failedParses++;
+        if (debugMode && failedParses <= 5) {
+          logMessage('warn', 'transaction-parse', `Error parsing line`, {
+            line: line.substring(0, 100),
+            error: parseError.message
+          });
         }
       }
     }
@@ -185,9 +225,12 @@ export const createPDFProcessor = (logMessage, debugMode, statementPeriod) => {
     logMessage('info', 'transaction-parse', `Transaction extraction completed`, {
       totalLinesProcessed: lines.length,
       transactionsExtracted: transactions.length,
-      patternMatches: matchCounts,
-      extractionRate: `${((transactions.length / lines.length) * 100).toFixed(1)}%`,
-      largestTransaction: transactions.length > 0 ? Math.max(...transactions.map(t => Math.abs(t.amount))) : 0
+      successfulParses,
+      failedParses,
+      extractionRate: `${((successfulParses / (successfulParses + failedParses)) * 100).toFixed(1)}%`,
+      largestTransaction: transactions.length > 0 ? Math.max(...transactions.map(t => Math.abs(t.amount))) : 0,
+      totalCreditAmount: transactions.filter(t => t.amount > 0).reduce((sum, t) => sum + t.amount, 0),
+      totalDebitAmount: transactions.filter(t => t.amount < 0).reduce((sum, t) => sum + Math.abs(t.amount), 0)
     });
     
     return transactions;
