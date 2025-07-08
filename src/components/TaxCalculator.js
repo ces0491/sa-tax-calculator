@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCircle, AlertCircle, X, Edit2, Save, Plus, Trash, Eye, EyeOff, Settings, RefreshCw, FileUp } from 'lucide-react';
 
 // Import modules
-import { createEnhancedPDFProcessor } from './enhanced-pdf-processing';
+import { createEnhancedPDFProcessor } from './pdf-processing';
 import { createCategorizer } from './transaction-categorisation';
 import { calculateTax, taxBracketsData } from './utils/tax-calculations';
 import { formatCurrency, getCurrentTaxYear, calculateAnnualAmount, getDataSourceBadge } from './utils/currency-formatters';
