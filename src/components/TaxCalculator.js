@@ -124,7 +124,10 @@ const SATaxCalculator = () => {
   const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
   const monthlyTaxRequired = taxCalculation.tax / 12;
 
-  // PDF Processing using modular functions
+  // Updated PDF Processing section for TaxCalculator.js
+// Replace the processPDF function in your TaxCalculator.js with this enhanced version
+
+  // Enhanced PDF Processing using modular functions  
   const processPDF = async (file) => {
     logMessage('info', 'pdf-load', `Starting PDF processing for: ${file.name}`);
     
@@ -138,6 +141,7 @@ const SATaxCalculator = () => {
         fileName: file.name
       });
       
+      // Enhanced text extraction with better structure preservation
       let allText = '';
       
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -145,13 +149,48 @@ const SATaxCalculator = () => {
           const page = await pdf.getPage(pageNum);
           const textContent = await page.getTextContent();
           
-          const pageText = textContent.items
-            .map(item => item.str)
-            .join(' ')
-            .replace(/\s+/g, ' ')
-            .trim();
+          logMessage('debug', 'text-extract', `Page ${pageNum} text extraction`, {
+            itemCount: textContent.items.length
+          });
           
-          allText += pageText + '\n';
+          // Enhanced text extraction - preserve positioning and structure
+          const pageItems = textContent.items.map(item => ({
+            str: item.str,
+            x: item.transform[4],
+            y: item.transform[5],
+            width: item.width,
+            height: item.height
+          }));
+          
+          // Sort items by Y coordinate (top to bottom) then X coordinate (left to right)
+          const sortedItems = pageItems.sort((a, b) => b.y - a.y || a.x - b.x);
+          
+          let structuredText = '';
+          let currentY = null;
+          let currentLine = [];
+          
+          for (const item of sortedItems) {
+            if (currentY === null || Math.abs(item.y - currentY) > 2) {
+              // New line
+              if (currentLine.length > 0) {
+                structuredText += currentLine.join(' ').trim() + '\n';
+              }
+              currentLine = [item.str];
+              currentY = item.y;
+            } else {
+              // Same line - add with space if not empty
+              if (item.str.trim()) {
+                currentLine.push(item.str);
+              }
+            }
+          }
+          
+          // Add the last line
+          if (currentLine.length > 0) {
+            structuredText += currentLine.join(' ').trim() + '\n';
+          }
+          
+          allText += structuredText;
           
         } catch (pageError) {
           logMessage('error', 'text-extract', `Error processing page ${pageNum}`, {
@@ -160,37 +199,70 @@ const SATaxCalculator = () => {
         }
       }
       
+      // Clean up the extracted text
+      allText = allText.replace(/\s+/g, ' ').replace(/\n\s*\n/g, '\n').trim();
+      
+      logMessage('info', 'text-extract', `Text extraction completed`, {
+        totalTextLength: allText.length,
+        lineCount: allText.split('\n').length,
+        fileName: file.name
+      });
+      
+      if (!allText || allText.length < 100) {
+        logMessage('error', 'text-extract', `Insufficient text extracted from PDF`, {
+          textLength: allText?.length || 0,
+          fileName: file.name
+        });
+        throw new Error(`Could not extract readable text from ${file.name}. Please ensure it's a text-based PDF.`);
+      }
+      
       setExtractedTexts(prev => [...prev, {
         fileName: file.name,
         pageCount: pdf.numPages,
         totalTextLength: allText.length,
         allText: allText,
-        extractedAt: new Date()
+        extractedAt: new Date(),
+        lineCount: allText.split('\n').length
       }]);
       
-      logMessage('info', 'transaction-parse', 'Starting transaction extraction');
-      const transactions = extractTransactions(allText, file.name);
+      logMessage('info', 'transaction-parse', 'Starting transaction extraction with enhanced parser');
+      const transactions = await extractTransactions(allText, file.name);
       
-      logMessage('info', 'categorization', 'Starting transaction categorization');
-      const processedData = categorizeTransactions(transactions);
+      if (transactions.length === 0) {
+        logMessage('warn', 'transaction-parse', `No transactions found in ${file.name}`, {
+          textLength: allText.length,
+          lineCount: allText.split('\n').length,
+          sampleText: allText.substring(0, 500),
+          hasDatePatterns: allText.match(/\d{1,2}\s+\w{3}/g)?.length || 0
+        });
+        
+        // Still proceed but notify user
+        setProcessingStatus(`Warning: No transactions found in ${file.name}. Please check if it's a valid bank statement.`);
+      } else {
+        logMessage('info', 'categorization', `Starting categorization of ${transactions.length} transactions`);
+        const processedData = categorizeTransactions(transactions);
 
-      // Update states
-      setRawTransactions(prev => [...prev, ...transactions]);
-      setIncomeEntries(prev => [...prev, ...processedData.income]);
-      setBusinessExpenses(prev => [...prev, ...processedData.business]);
-      setPersonalExpenses(prev => [...prev, ...processedData.personal]);
-      setHomeExpenses(prev => [...prev, ...processedData.home]);
-      setUncategorizedTransactions(prev => [...prev, ...processedData.uncategorized]);
+        // Update states
+        setRawTransactions(prev => [...prev, ...transactions]);
+        setIncomeEntries(prev => [...prev, ...processedData.income]);
+        setBusinessExpenses(prev => [...prev, ...processedData.business]);
+        setPersonalExpenses(prev => [...prev, ...processedData.personal]);
+        setHomeExpenses(prev => [...prev, ...processedData.home]);
+        setUncategorizedTransactions(prev => [...prev, ...processedData.uncategorized]);
+      }
 
       setUploadedFiles(prev => [...prev, {
         name: file.name,
         pageCount: pdf.numPages,
         transactionCount: transactions.length,
         processedAt: new Date(),
-        textLength: allText.length
+        textLength: allText.length,
+        lineCount: allText.split('\n').length
       }]);
       
-      logMessage('info', 'pdf-load', `PDF processing completed successfully for: ${file.name}`);
+      logMessage('info', 'pdf-load', `PDF processing completed successfully for: ${file.name}`, {
+        transactionsFound: transactions.length
+      });
       
     } catch (error) {
       logMessage('error', 'pdf-load', `Failed to process PDF: ${file.name}`, {
