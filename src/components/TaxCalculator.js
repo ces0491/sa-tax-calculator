@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Download, FileText, DollarSign, TrendingUp, Calculator, CheckCircle, AlertCircle, X, Edit2, Save, Plus, Trash, Eye, EyeOff, Settings, RefreshCw, FileUp } from 'lucide-react';
 
-// Import modules - CORRECTED IMPORTS
+// Fixed imports
 import { createPDFProcessor } from './pdf-processing';
 import { createCategorizer } from './transaction-categorisation';
 import { calculateTax, taxBracketsData } from './utils/tax-calculations';
@@ -25,7 +25,6 @@ const SATaxCalculator = () => {
   const [debugMode, setDebugMode] = useState(false);
   const [processingLogs, setProcessingLogs] = useState([]);
   const [showLogs, setShowLogs] = useState(false);
-  const [extractedTexts, setExtractedTexts] = useState([]);
 
   // Data states
   const [incomeEntries, setIncomeEntries] = useState([]);
@@ -35,11 +34,6 @@ const SATaxCalculator = () => {
   const [rawTransactions, setRawTransactions] = useState([]);
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [uncategorizedTransactions, setUncategorizedTransactions] = useState([]);
-  const [editingEntry, setEditingEntry] = useState(null);
-
-  // Categories
-  const incomeCategories = ["Employment", "Freelance", "Investment", "Rental", "Business", "Other"];
-  const expenseCategories = ["Office", "Medical", "Retirement", "Professional", "Education", "Travel", "Equipment", "Software", "Insurance", "Utilities", "Marketing", "Training", "Other"];
 
   // Period detection and annualization
   const [statementPeriod, setStatementPeriod] = useState(null);
@@ -51,15 +45,14 @@ const SATaxCalculator = () => {
     const logEntry = {
       id: Date.now() + Math.random(),
       timestamp,
-      level, // 'info', 'warn', 'error', 'debug'
-      category, // 'pdf-load', 'text-extract', 'transaction-parse', 'categorization'
+      level,
+      category,
       message,
       data
     };
     
     setProcessingLogs(prev => [...prev, logEntry]);
     
-    // Also log to console in debug mode
     if (debugMode) {
       console.log(`[${level.toUpperCase()}] ${category}: ${message}`, data);
     }
@@ -69,10 +62,9 @@ const SATaxCalculator = () => {
 
   const clearLogs = () => {
     setProcessingLogs([]);
-    setExtractedTexts([]);
   };
 
-  // Create processors - CORRECTED TO USE createPDFProcessor
+  // Create processors
   const pdfProcessor = createPDFProcessor(logMessage, debugMode);
   const { categorizeTransactions } = createCategorizer(logMessage, debugMode, homeOfficePercentage, (amount, period) => calculateAnnualAmount(amount, period, statementPeriod));
 
@@ -111,7 +103,7 @@ const SATaxCalculator = () => {
     }
   }, [rawTransactions]);
 
-  // Calculate totals using imported function
+  // Calculate totals
   const totalAnnualIncome = incomeEntries.reduce((sum, entry) => 
     sum + calculateAnnualAmount(entry.amount, entry.period, statementPeriod), 0);
   
@@ -123,14 +115,12 @@ const SATaxCalculator = () => {
     .reduce((sum, expense) => sum + calculateAnnualAmount(expense.amount, expense.period, statementPeriod), 0);
 
   const taxableIncome = Math.max(0, totalAnnualIncome - totalDeductibleExpenses);
-
-  // Use imported tax calculation
   const taxCalculation = calculateTax(taxableIncome, selectedTaxYear, userAge);
   const monthlyTaxRequired = taxCalculation.tax / 12;
 
-  // Enhanced PDF Processing using the corrected processor
+  // Enhanced PDF Processing
   const processPDF = async (file) => {
-    logMessage('info', 'pdf-load', `Starting enhanced PDF processing for: ${file.name}`);
+    logMessage('info', 'pdf-load', `Starting PDF processing for: ${file.name}`);
     
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -142,48 +132,28 @@ const SATaxCalculator = () => {
         fileName: file.name
       });
       
-      // Use enhanced text extraction - CORRECTED FUNCTION CALL
+      // Extract text from PDF
       const textResult = await pdfProcessor.extractTextFromPDF(pdf, file.name);
       
       if (!textResult.text || textResult.text.length < 100) {
         logMessage('error', 'text-extract', `Insufficient text extracted from PDF`, {
           textLength: textResult.text?.length || 0,
-          linesFound: textResult.lines?.length || 0,
           fileName: file.name
         });
         throw new Error(`Could not extract readable text from ${file.name}. Please ensure it's a text-based PDF.`);
       }
       
-      logMessage('info', 'text-extract', `Enhanced text extraction completed`, {
+      logMessage('info', 'text-extract', `Text extraction completed`, {
         textLength: textResult.text.length,
-        linesFound: textResult.lines.length,
-        totalItems: textResult.totalItems,
         fileName: file.name
       });
       
-      // Store extracted text for debugging
-      setExtractedTexts(prev => [...prev, {
-        fileName: file.name,
-        pageCount: pdf.numPages,
-        totalTextLength: textResult.text.length,
-        linesFound: textResult.lines.length,
-        allText: textResult.text,
-        allLines: textResult.lines,
-        extractedAt: new Date()
-      }]);
-      
-      // Extract transactions using enhanced processor - CORRECTED FUNCTION CALL
-      logMessage('info', 'transaction-parse', 'Starting enhanced transaction extraction');
+      // Extract transactions
+      logMessage('info', 'transaction-parse', 'Starting transaction extraction');
       const transactions = await pdfProcessor.extractTransactions(textResult.text, file.name);
       
       if (transactions.length === 0) {
-        logMessage('warn', 'transaction-parse', `No transactions found in ${file.name}`, {
-          textLength: textResult.text.length,
-          linesFound: textResult.lines.length,
-          sampleText: textResult.text.substring(0, 500),
-          sampleLines: textResult.lines.slice(0, 20)
-        });
-        
+        logMessage('warn', 'transaction-parse', `No transactions found in ${file.name}`);
         setProcessingStatus(`Warning: No transactions found in ${file.name}. Please check if it's a valid bank statement.`);
       } else {
         logMessage('info', 'categorization', `Starting categorization of ${transactions.length} transactions`);
@@ -213,11 +183,10 @@ const SATaxCalculator = () => {
         pageCount: pdf.numPages,
         transactionCount: transactions.length,
         processedAt: new Date(),
-        textLength: textResult.text.length,
-        linesFound: textResult.lines.length
+        textLength: textResult.text.length
       }]);
       
-      logMessage('info', 'pdf-load', `Enhanced PDF processing completed successfully for: ${file.name}`, {
+      logMessage('info', 'pdf-load', `PDF processing completed successfully for: ${file.name}`, {
         transactionsFound: transactions.length
       });
       
@@ -234,17 +203,17 @@ const SATaxCalculator = () => {
     if (files.length === 0 || !pdfJsLoaded) return;
 
     setIsProcessing(true);
-    setProcessingStatus('Starting enhanced PDF processing...');
+    setProcessingStatus('Starting PDF processing...');
     clearLogs();
 
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
-        setProcessingStatus(`Processing ${file.name} (${i + 1}/${files.length}) with enhanced extraction...`);
+        setProcessingStatus(`Processing ${file.name} (${i + 1}/${files.length})...`);
         await processPDF(file);
       }
       
-      setProcessingStatus(`✅ Successfully processed ${files.length} file(s) with enhanced extraction`);
+      setProcessingStatus(`✅ Successfully processed ${files.length} file(s)`);
       setTimeout(() => setProcessingStatus(''), 5000);
       
     } catch (error) {
@@ -301,18 +270,12 @@ const SATaxCalculator = () => {
                 pdfJsLoaded ? 'bg-green-100 text-green-800' : 'bg-orange-100 text-orange-800'
               }`}>
                 <CheckCircle className="mr-1" size={12} />
-                Enhanced PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
+                PDF.js {pdfJsLoaded ? 'Ready' : 'Loading...'}
               </span>
               {uploadedFiles.length > 0 && (
                 <span className="inline-flex items-center px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
                   <FileText className="mr-1" size={12} />
                   {uploadedFiles.length} files
-                </span>
-              )}
-              {debugMode && (
-                <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-800 rounded-full text-xs">
-                  <AlertCircle className="mr-1" size={12} />
-                  Debug
                 </span>
               )}
             </div>
@@ -386,9 +349,6 @@ const SATaxCalculator = () => {
                       <div className="text-orange-600 font-medium">⚠️ PROJECTED ANNUAL FIGURES</div>
                       <div className="text-sm text-gray-600">
                         Actual amounts multiplied by {statementPeriod.annualizationFactor.toFixed(1)}x for annual projection
-                      </div>
-                      <div className="text-xs text-orange-600 mt-1">
-                        ⚡ For provisional tax: pay on projected amounts, reconcile at year-end
                       </div>
                     </div>
                   )}
@@ -469,8 +429,7 @@ const SATaxCalculator = () => {
                 </div>
                 <h3 className="text-2xl font-bold text-gray-800 mb-4">Get Started with Enhanced PDF Processing</h3>
                 <p className="text-gray-600 mb-6 max-w-2xl mx-auto">
-                  Upload your bank statement PDFs for intelligent transaction extraction with our enhanced processing engine. 
-                  The system now has improved text recognition and transaction parsing for better accuracy.
+                  Upload your Standard Bank statement PDFs for intelligent transaction extraction with our enhanced processing engine.
                 </p>
                 
                 <label className={`inline-flex items-center px-6 py-3 ${
@@ -490,9 +449,9 @@ const SATaxCalculator = () => {
                 
                 <div className="mt-6">
                   <p className="text-sm text-gray-500">
-                    ✨ Enhanced processing for Standard Bank, FNB, ABSA, Nedbank, and Capitec<br/>
+                    ✨ Enhanced processing for Standard Bank statements<br/>
                     🔧 Improved text extraction and transaction parsing<br/>
-                    📊 Auto-applies {homeOfficePercentage}% home office deduction • Manual categorization for accuracy
+                    📊 Auto-applies {homeOfficePercentage}% home office deduction
                   </p>
                 </div>
               </div>
@@ -502,7 +461,7 @@ const SATaxCalculator = () => {
             {uploadedFiles.length > 0 && (
               <div className="bg-white rounded-lg shadow-lg p-6">
                 <h3 className="text-lg font-semibold text-blue-700 mb-4">
-                  📁 Processed Files ({uploadedFiles.length}) - Enhanced Processing
+                  📁 Processed Files ({uploadedFiles.length})
                 </h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {uploadedFiles.map((file, index) => (
@@ -510,9 +469,6 @@ const SATaxCalculator = () => {
                       <div className="font-medium text-sm truncate">{file.name}</div>
                       <div className="text-xs text-gray-600 mt-1">
                         {file.transactionCount} transactions • {file.pageCount} pages
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {file.linesFound} lines extracted • {(file.textLength / 1024).toFixed(1)}KB text
                       </div>
                       <div className="text-xs text-gray-500">
                         {file.processedAt.toLocaleString()}
@@ -612,10 +568,130 @@ const SATaxCalculator = () => {
           </div>
         )}
 
+        {/* Expenses Tab */}
+        {activeTab === 'expenses' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-blue-700">Business Expenses</h3>
+                  <p className="text-sm text-gray-600">
+                    {businessExpenses.filter(e => !e.isExcluded).length} deductible items • {formatCurrency(totalDeductibleExpenses)} 
+                    {isProjectedIncome ? ' projected annual' : ' annual'} total
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                {businessExpenses.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <CheckCircle className="mx-auto mb-4" size={48} />
+                    <p className="text-lg font-medium">No business expenses found</p>
+                    <p className="text-sm">Upload bank statements to get started</p>
+                  </div>
+                ) : (
+                  businessExpenses.map((expense) => (
+                    <div key={expense.id} className={`p-4 bg-gray-50 rounded-lg border-l-4 ${
+                      expense.isExcluded ? 'border-red-500' : 'border-blue-500'
+                    }`}>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-3">
+                          {(() => {
+                            const badge = getDataSourceBadge(expense.dataSource, expense.confidence, expense.isExcluded);
+                            return <span className={badge.className}>{badge.text}</span>;
+                          })()}
+                          <div>
+                            <div className="font-medium text-lg">{expense.description}</div>
+                            <div className="text-sm text-gray-600">{expense.category}</div>
+                            {expense.isExcluded && (
+                              <div className="text-sm text-red-600">❌ Excluded: {expense.exclusionReason}</div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-xl font-bold ${expense.isExcluded ? 'text-red-600' : 'text-blue-600'}`}>
+                            {formatCurrency(calculateAnnualAmount(expense.amount, expense.period, statementPeriod))}
+                            {expense.period === 'actual' && isProjectedIncome && (
+                              <span className="text-xs text-orange-600 ml-1">*</span>
+                            )}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {expense.period === 'actual' ? (
+                              <>
+                                {formatCurrency(expense.amount)} actual
+                                {isProjectedIncome && statementPeriod && (
+                                  <div className="text-xs text-orange-600">
+                                    *Projected from {statementPeriod.monthsCovered} months
+                                  </div>
+                                )}
+                              </>
+                            ) : (
+                              `${formatCurrency(expense.amount)} ${expense.period}`
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      
+                      {expense.notes && (
+                        <div className="mt-2 text-sm text-gray-600">💡 {expense.notes}</div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Review Tab */}
+        {activeTab === 'review' && (
+          <div className="space-y-6">
+            <div className="bg-white rounded-lg shadow-lg p-6">
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h3 className="text-xl font-semibold text-orange-700">Transactions Requiring Review</h3>
+                  <p className="text-sm text-gray-600">
+                    {uncategorizedTransactions.length} transactions need manual categorization
+                  </p>
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                {uncategorizedTransactions.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">
+                    <CheckCircle className="mx-auto mb-4" size={48} />
+                    <p className="text-lg font-medium">All transactions have been categorized</p>
+                    <p className="text-sm">Great! No manual review required</p>
+                  </div>
+                ) : (
+                  uncategorizedTransactions.map((transaction) => (
+                    <div key={transaction.id} className="p-4 bg-orange-50 rounded-lg border-l-4 border-orange-500">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium text-lg">{transaction.originalDescription}</div>
+                          <div className="text-sm text-gray-600">{transaction.date} • {transaction.sourceFile}</div>
+                          <div className="text-sm text-orange-600">{transaction.reason}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className={`text-xl font-bold ${transaction.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            {formatCurrency(Math.abs(transaction.amount))}
+                          </div>
+                          <div className="text-sm text-gray-500">
+                            {transaction.amount > 0 ? 'Credit' : 'Debit'}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Settings Tab */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            {/* Tax Settings */}
             <div className="bg-white rounded-lg shadow-lg p-6">
               <h3 className="text-xl font-semibold text-gray-800 mb-6">Tax Settings</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -665,13 +741,13 @@ const SATaxCalculator = () => {
 
             {/* Enhanced File Upload */}
             <div className="bg-white rounded-lg shadow-lg p-6">
-              <h3 className="text-xl font-semibold text-gray-800 mb-6">Enhanced Document Upload</h3>
+              <h3 className="text-xl font-semibold text-gray-800 mb-6">Document Upload</h3>
               <div className="space-y-4">
                 <label className={`w-full p-6 ${
                   pdfJsLoaded ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-400 cursor-not-allowed'
                 } text-white rounded-lg cursor-pointer flex items-center justify-center text-lg font-medium`}>
                   <Upload className="mr-3" size={24} />
-                  Upload Bank Statement PDFs (Enhanced Processing)
+                  Upload Bank Statement PDFs
                   <input
                     type="file"
                     accept=".pdf"
@@ -681,16 +757,6 @@ const SATaxCalculator = () => {
                     disabled={isProcessing || !pdfJsLoaded}
                   />
                 </label>
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                  <h4 className="font-medium text-blue-800 mb-2">✨ Enhanced Processing Features:</h4>
-                  <ul className="text-sm text-blue-700 space-y-1">
-                    <li>• Improved text extraction preserving line structure</li>
-                    <li>• Smart transaction reconstruction for multi-line entries</li>
-                    <li>• Better handling of South African number formats (spaces in amounts)</li>
-                    <li>• Enhanced Standard Bank format recognition</li>
-                    <li>• Comprehensive debugging and logging</li>
-                  </ul>
-                </div>
               </div>
             </div>
 
@@ -717,36 +783,17 @@ const SATaxCalculator = () => {
                   {showTransactionDetails ? <EyeOff className="mr-2" size={16} /> : <Eye className="mr-2" size={16} />}
                   Details
                 </button>
+                
+                <button
+                  onClick={() => setShowLogs(!showLogs)}
+                  className={`flex items-center justify-center px-4 py-3 rounded-lg font-medium ${
+                    showLogs ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
+                  }`}
+                >
+                  <FileText className="mr-2" size={16} />
+                  Logs ({processingLogs.length})
+                </button>
               </div>
-              
-              {processingLogs.length > 0 && (
-                <div className="mt-6">
-                  <div className="flex justify-between items-center mb-3">
-                    <h4 className="font-medium text-gray-800">Enhanced Processing Logs ({processingLogs.length})</h4>
-                    <div className="flex space-x-2 text-sm">
-                      <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded">
-                        {processingLogs.filter(log => log.level === 'info').length} Info
-                      </span>
-                      <span className="px-2 py-1 bg-orange-100 text-orange-800 rounded">
-                        {processingLogs.filter(log => log.level === 'warn').length} Warnings
-                      </span>
-                      <span className="px-2 py-1 bg-red-100 text-red-800 rounded">
-                        {processingLogs.filter(log => log.level === 'error').length} Errors
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <button
-                    onClick={() => setShowLogs(!showLogs)}
-                    className={`flex items-center px-3 py-2 rounded-lg font-medium ${
-                      showLogs ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700'
-                    }`}
-                  >
-                    <FileText className="mr-1" size={16} />
-                    {showLogs ? 'Hide' : 'Show'} Enhanced Processing Logs
-                  </button>
-                </div>
-              )}
               
               {showLogs && processingLogs.length > 0 && (
                 <div className="mt-4 max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
@@ -790,11 +837,8 @@ const SATaxCalculator = () => {
       
       {/* Footer */}
       <div className="text-center text-gray-600 text-sm py-8">
-        <p>Current Tax Year: {getCurrentTaxYear()} • Enhanced PDF Processing v2.0 • Please consult with a qualified tax practitioner for official tax filing and advice</p>
+        <p>Current Tax Year: {getCurrentTaxYear()} • Enhanced PDF Processing • Please consult with a qualified tax practitioner for official tax filing and advice</p>
         <p className="mt-2 font-medium">Generated: {new Date().toLocaleString()}</p>
-        {debugMode && (
-          <p className="mt-1 text-orange-600 font-medium">🔍 Enhanced Debug Mode: Comprehensive logging and detailed extraction analysis</p>
-        )}
       </div>
     </div>
   );
